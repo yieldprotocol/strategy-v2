@@ -51,7 +51,7 @@ contract Strategy is AccessControl, ERC20Permit {
     event TokenJoinReset(address join);
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint128 low, uint128 high);
-    event RewardsSet(IERC20 reward, uint112 base, uint112 rate, uint32 start);
+    event RewardsSet(IERC20 reward, uint112 base, uint80 rate, uint32 start, uint32 end);
     event PoolSwapped(address pool, bytes6 seriesId);
     event Claimable(address user, uint256 claimable);
     event Claimed(address user, uint256 claimed);
@@ -63,8 +63,9 @@ contract Strategy is AccessControl, ERC20Permit {
 
     struct Emissions {
         uint112 base;                            // Base reward emissions
-        uint112 rate;                            // Reward emissions rate
+        uint80 rate;                             // Reward emissions rate
         uint32 start;                            // Start time for the current reward emissions
+        uint32 end;                              // End time for the current reward emissions
     }
 
     IERC20 public immutable base;                // Base token for this strategy
@@ -79,7 +80,7 @@ contract Strategy is AccessControl, ERC20Permit {
 
     IMintableERC20 public reward;                // Token used for additional rewards
     Emissions public emissions;                  // Stream of reward tokens
-    mapping (address => uint256) public claimed; // Last emissions level at which each user claimed rewards
+    mapping (address => uint32) public claimed;  // Last time at which each user claimed rewards
 
     constructor(ILadle ladle_, IERC20 base_, bytes6 baseId_)
         ERC20Permit(
@@ -157,7 +158,7 @@ contract Strategy is AccessControl, ERC20Permit {
 
     /// @dev Set a rewards schedule
     /// @notice The rewards token can be changed, but that won't affect past claims, use with care.
-    function setRewards(IMintableERC20 reward_, uint112 rate)
+    function setRewards(IMintableERC20 reward_, uint80 rate, uint32 start, uint32 end)
         public
         auth
     {
@@ -166,9 +167,10 @@ contract Strategy is AccessControl, ERC20Permit {
         Emissions memory emissions_ = emissions;
         emissions_.base = emissions_.base + emissions_.rate * ((uint32(block.timestamp) - emissions_.start));
         emissions_.rate = rate;
-        emissions_.start = uint32(block.timestamp);
+        emissions_.start = start;
+        emissions_.end = end;
         emissions = emissions_;
-        emit RewardsSet(reward, emissions_.base, emissions_.rate, emissions_.start);
+        emit RewardsSet(reward, emissions_.base, emissions_.rate, emissions_.start, emissions._end);
     }
 
     /// @dev Swap funds to a new pool (auth)
@@ -219,36 +221,43 @@ contract Strategy is AccessControl, ERC20Permit {
     /// Since users can claim at any time, their claimable are (current level - last claimed level) * (user balance / total supply)
     function _claimable(address user)
         internal view
-        returns (uint256 claimable, uint256 current)
+        returns (uint256 claimable)
     {
         Emissions memory emissions_ = emissions;
-        current = emissions_.base + emissions_.rate * ((block.timestamp - emissions_.start));
-        claimable = (current - claimed[msg.sender]) * _balanceOf[user] / _totalSupply;        
+        uint32 claimed_ = claimed[user]
+        
+        uint32 start = claimed_ > emissions_.start ? claimed_ : emissions_.start; // max
+        uint32 end = block.timestamp < emissions_.end ? block.timestamp : emissions_.end; // min
+
+        if (end <= start) return (0, emissions_.base + emissions_.rate * (emissions_.end - emissions_.start));
+        current = emissions_.base + emissions_.rate * (end - start);
+        claimable = (current - claimed_) * _balanceOf[user] / _totalSupply;        
     }
 
-    /// @dev Adjust the claimable tokens by increasing the claimed record proportionally upwards with the tokens received.
+    /// @dev Adjust the claimable tokens by increasing the claimed timestamp proportionally upwards with the tokens received.
     /// In other words, any received tokens don't benefit from the accumulated claimable level.
     function _adjustClaimable(address user, uint256 added)
         internal
-        returns (uint256 adjusted)
+        returns (uint32 adjusted)
     {
-        (uint256 claimable, uint256 current) = _claimable(user);
-        if (claimable == 0) return current;
-
         uint256 oldBalance = _balanceOf[user];
         uint256 newBalance = oldBalance + added;
-        adjusted = claimed[user] + (claimable * (newBalance - oldBalance)) / newBalance;
-        claimed[user] = adjusted;
-        emit Claimable(user, adjusted);       
+
+        uint32 start = claimed_ > emissions_.start ? claimed_ : emissions_.start; // max
+        uint32 end = block.timestamp < emissions_.end ? block.timestamp : emissions_.end; // min
+
+        adjustment = (end - start) * ((newBalance - oldBalance) / newBalance);
+        claimed[user] += adjustment;
+        emit Claimable(user, adjustment);       
     }
 
     /// @dev Claim all rewards tokens available to the owner
     function claim(address to)
         public
-        returns (uint256 claiming, uint256 current)
+        returns (uint256 claiming)
     {
-        (claiming, current) = _claimable(msg.sender);
-        claimed[msg.sender] = current;
+        claiming = _claimable(msg.sender);
+        claimed[msg.sender] = block.timestamp;
         reward.mint(to, claiming);
         emit Claimed(to, claiming);
     }
