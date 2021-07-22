@@ -166,6 +166,7 @@ contract Strategy is AccessControl, ERC20Permit {
 
     /// @dev Set a rewards schedule
     /// @notice The rewards token can be changed, but that won't affect past claims, use with care.
+    /// @notice There is only one schedule with one rate, so a change to the schedule will affect all unclaimed rewards, use with care.
     function setRewards(IMintableERC20 reward_, uint192 rate, uint32 start, uint32 end)
         public
         auth
