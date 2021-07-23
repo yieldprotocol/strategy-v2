@@ -56,6 +56,36 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         emit RewardsSet(reward, schedule_.rate, schedule_.start, schedule_.end);
     }
 
+    /// @dev Claim all rewards tokens available to the owner
+    function claim(address to)
+        public
+        returns (uint256 claiming)
+    {
+        claiming = _claimable(msg.sender);
+        claimed[msg.sender] = uint32(block.timestamp);
+        reward.mint(to, claiming);
+        emit Claimed(to, claiming);
+    }
+
+    /// @dev Length of time that the user can claim rewards for.
+    function claimablePeriod(address user)
+        external view
+        returns (uint32 period)
+    {
+        return _claimablePeriod(user);
+    }
+
+    /// @dev The claimable reward tokens are the total rewards since the last claim for the user multiplied by the proportion
+    /// of strategy tokens the user holds with regards to the total strategy token supply.
+    /// To allow the schedule rate to change the current schedule level is `recorded + rate * (now - start)`
+    /// Since users can claim at any time, their claimable are (current level - last claimed level) * (user balance / total supply)
+    function claimable(address user)
+        external view
+        returns (uint256 claimable)
+    {
+        return _claimable(user);
+    }
+
     /// @dev Length of time that the user can claim rewards for.
     function _claimablePeriod(address user)
         internal view
@@ -92,17 +122,6 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         adjustment = ((_claimablePeriod(user) * (newBalance - oldBalance)) / newBalance).u32();
         claimed[user] += adjustment;
         emit Claimable(user, adjustment);       
-    }
-
-    /// @dev Claim all rewards tokens available to the owner
-    function claim(address to)
-        public
-        returns (uint256 claiming)
-    {
-        claiming = _claimable(msg.sender);
-        claimed[msg.sender] = uint32(block.timestamp);
-        reward.mint(to, claiming);
-        emit Claimed(to, claiming);
     }
 
     /// @dev Mint strategy tokens. The underlying tokens that the user contributes need to have been transferred previously.
