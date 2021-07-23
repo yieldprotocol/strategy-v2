@@ -23,17 +23,17 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
 
     event RewardsSet(IMintableERC20 reward, uint192 rate, uint32 start, uint32 end);
     event Claimable(address user, uint256 claimable);
-    event Claimed(address user, uint256 claimed);
+    event Claimed(address user, uint256 timestamp);
 
     struct Schedule {
-        uint192 rate;                            // Reward schedule rate
-        uint32 start;                            // Start time for the current reward schedule
-        uint32 end;                              // End time for the current reward schedule
+        uint192 rate;                               // Reward schedule rate
+        uint32 start;                               // Start time for the current reward schedule
+        uint32 end;                                 // End time for the current reward schedule
     }
 
-    IMintableERC20 public reward;                // Token used for additional rewards
-    Schedule public schedule;                    // Reward schedule
-    mapping (address => uint32) public claimed;  // Last time at which each user claimed rewards
+    IMintableERC20 public reward;                   // Token used for additional rewards
+    Schedule public schedule;                       // Reward schedule
+    mapping (address => uint32) public lastClaimed; // Last time at which each user claimed rewards
 
     constructor(string memory name, string memory symbol, uint8 decimals)
         ERC20Permit(name, symbol, decimals)
@@ -61,8 +61,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         public
         returns (uint256 claiming)
     {
-        claiming = _claimable(msg.sender);
-        claimed[msg.sender] = uint32(block.timestamp);
+        claiming = _claimableAmount(msg.sender);
+        lastClaimed[msg.sender] = uint32(block.timestamp);
         reward.mint(to, claiming);
         emit Claimed(to, claiming);
     }
@@ -79,11 +79,11 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     /// of strategy tokens the user holds with regards to the total strategy token supply.
     /// To allow the schedule rate to change the current schedule level is `recorded + rate * (now - start)`
     /// Since users can claim at any time, their claimable are (current level - last claimed level) * (user balance / total supply)
-    function claimable(address user)
+    function claimableAmount(address user)
         external view
-        returns (uint256 claimable)
+        returns (uint256 amount)
     {
-        return _claimable(user);
+        return _claimableAmount(user);
     }
 
     /// @dev Length of time that the user can claim rewards for.
@@ -92,8 +92,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         returns (uint32 period)
     {
         Schedule memory schedule_ = schedule;
-        uint32 lastClaimed = claimed[user];
-        uint32 start = lastClaimed > schedule_.start ? lastClaimed : schedule_.start; // max
+        uint32 lastClaimed_ = lastClaimed[user];
+        uint32 start = lastClaimed_ > schedule_.start ? lastClaimed_ : schedule_.start; // max
         uint32 end = uint32(block.timestamp) < schedule_.end ? uint32(block.timestamp) : schedule_.end; // min
         period = (end > start) ? end - start : 0;
     }
@@ -102,12 +102,12 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     /// of strategy tokens the user holds with regards to the total strategy token supply.
     /// To allow the schedule rate to change the current schedule level is `recorded + rate * (now - start)`
     /// Since users can claim at any time, their claimable are (current level - last claimed level) * (user balance / total supply)
-    function _claimable(address user)
+    function _claimableAmount(address user)
         internal view
-        returns (uint256 claimable)
+        returns (uint256 amount)
     {
         uint256 totalRewards = uint256(schedule.rate) * _claimablePeriod(user); // TODO: schedule.rate could be returned from _claimablePeriod, or schedule be given to _claimablePeriod
-        claimable = totalRewards * _balanceOf[user] / _totalSupply;        
+        amount = totalRewards * _balanceOf[user] / _totalSupply;        
     }
 
     /// @dev Adjust the claimable tokens by increasing the claimed timestamp proportionally upwards with the tokens received.
@@ -120,7 +120,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         uint256 newBalance = oldBalance + added;
 
         adjustment = ((_claimablePeriod(user) * (newBalance - oldBalance)) / newBalance).u32();
-        claimed[user] += adjustment;
+        lastClaimed[user] += adjustment;
         emit Claimable(user, adjustment);       
     }
 
