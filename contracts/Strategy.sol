@@ -21,13 +21,6 @@ interface ICauldron {
     function series(bytes6) external view returns (DataTypes.Series memory);
 }
 
-library CastU256U128 {
-    /// @dev Safely cast an uint256 to an uint128
-    function u128(uint256 x) internal pure returns (uint128 y) {
-        require (x <= type(uint128).max, "Cast overflow");
-        y = uint128(x);
-    }
-}
 
 library CastU128I128 {
     /// @dev Safely cast an uint128 to an int128
@@ -39,7 +32,7 @@ library CastU128I128 {
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
-    using CastU256U128 for uint256;
+    using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU128I128 for uint128;
 
     event LadleSet(ILadle ladle);
