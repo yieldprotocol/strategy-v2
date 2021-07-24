@@ -5,6 +5,7 @@ import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 
+
 interface IMintableERC20 is IERC20 {
     function mint(address, uint256) external;
 }
@@ -32,7 +33,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
 
     event RewardsSet(IMintableERC20 rewardToken, uint32 start, uint32 end, uint128 rate, uint128 available);
     event Claimable(address user, uint256 claimable);
-    event Claimed(address user, uint256 timestamp);
+    event Claimed(address user, uint256 claimed);
 
     struct RewardPeriod {
         uint32 start;                               // Start time for the current rewardToken schedule
@@ -60,16 +61,16 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         public
         auth
     {
-        if (rewardToken_ != IMintableERC20(address(0))) rewardToken = rewardToken_;
+        if (rewardToken_ != IMintableERC20(address(0))) rewardToken = rewardToken_; // TODO: Allow to change only after a safety period after end, to avoid affecting current claimable
 
         RewardPeriod memory rewardPeriod_ = rewardPeriod;
-        rewardPeriod_.start = start;
-        rewardPeriod_.end = end;
+        rewardPeriod_.start = start;                // TODO: Don't allow to set later than end
+        rewardPeriod_.end = end;                    // TODO: Don't allow to set to a point in the past, to avoid removing claimable amounts
         rewardPeriod = rewardPeriod_;
 
         RewardEmissions memory rewardEmissions_ = rewardEmissions;
-        rewardEmissions_.rate = rate;
-        rewardEmissions_.available = available;
+        rewardEmissions_.rate = rate;               // TODO: Allow to decrease only after a safety period after end, to avoid affecting current claimable
+        rewardEmissions_.available = available;     // TODO: Allow to decrease only after a safety period after end, to avoid affecting current claimable
         rewardEmissions = rewardEmissions_;
         emit RewardsSet(rewardToken, start, end, rate, available);
     }

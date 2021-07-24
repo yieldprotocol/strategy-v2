@@ -28,6 +28,7 @@ describe('ERC20Rewards', async function () {
   let ownerAcc: SignerWithAddress
   let owner: string
   let user1: string
+  let user1Acc: SignerWithAddress
   let user2: string
 
   let governance: ERC20;
@@ -40,7 +41,8 @@ describe('ERC20Rewards', async function () {
     const signers = await ethers.getSigners()
     ownerAcc = signers[0]
     owner = ownerAcc.address
-    user1 = signers[1].address
+    user1Acc = signers[1]
+    user1 = user1Acc.address
     user2 = signers[2].address
   })
 
@@ -76,33 +78,95 @@ describe('ERC20Rewards', async function () {
   })
 
   describe('with a rewards schedule', async () => {
+    let snapshotId: string
+    let timestamp: number
+    let start: number
+    let length: number
+    let mid: number
+    let end: number
+    
+    before(async () => {
+      ({ timestamp } = await ethers.provider.getBlock('latest'))
+      start = timestamp + 1000000
+      length = 2000000
+      mid = start + length / 2
+      end = start + length
+    })
+    
     beforeEach(async () => {
-      const { timestamp } = await ethers.provider.getBlock('latest')
-      await rewards.setRewards(governance.address, timestamp, timestamp + 2000000, 1, 1000000)
-      await ethers.provider.send('evm_mine', [timestamp + 1000000])
+      await rewards.setRewards(governance.address, start, end, 1, 1000000)
     })
 
-    it('calculates the claimable period', async () => {
-      almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(1000000), BigNumber.from(10))
+    describe('before the schedule', async () => {
+      it('calculates the claimable period', async () => {
+        almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(0), BigNumber.from(10))
+      })
     })
 
-    it('calculates the claimable amount', async () => {
-      const period = BigNumber.from(await rewards.claimablePeriod(user1))
-      expect(await rewards.claimableAmount(user1)).to.equal(period)
-    })
-  
-    it('allows to claim', async () => {
+    describe('during the schedule', async () => {
+      beforeEach(async () => {
+        snapshotId = await ethers.provider.send('evm_snapshot', []);
+        await ethers.provider.send('evm_mine', [mid])
+      })
+
+      afterEach(async () => {
+        await ethers.provider.send('evm_revert', [snapshotId])
+      })
+
+      it('calculates the claimable period', async () => {
+        almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(length / 2), BigNumber.from(10))
+      })
+
+      it('calculates the claimable amount', async () => {
+        const period = BigNumber.from(await rewards.claimablePeriod(user1))
+        expect(await rewards.claimableAmount(user1)).to.equal(period)
+      })
+
+      it('minting doesn\'t change the claimable', async () => {
+        await rewards.mint(user2, WAD)
+        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
+      })
+
+      it('receiving doesn\'t increase the claimable', async () => {
+        await rewards.connect(user1Acc).transfer(user2, WAD)
+        const period = BigNumber.from(await rewards.claimablePeriod(user2))
+        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
+      })
+
+      it('supply increase doesn\'t change the claimable', async () => {
+        await rewards.mint(user2, WAD)
+        const period = BigNumber.from(await rewards.claimablePeriod(user1))
+        almostEqual(BigNumber.from(await rewards.claimableAmount(user1)), BigNumber.from(period), BigNumber.from(10))
+      })
+
+      it('allows to claim', async () => {
+        let period = BigNumber.from(await rewards.claimablePeriod(user1))
+        expect(await rewards.connect(user1Acc).claim(user1))
+          .to.emit(rewards, 'Claimed')
+          .withArgs(user1, await governance.balanceOf(user1))
+        
+        // Claims an amount, in this case since rate is 1 the claimed amount is equal to the claimable period
+        almostEqual(BigNumber.from(await governance.balanceOf(user1)), BigNumber.from(period), BigNumber.from(10))
+
+        // After claiming, the claimable amount is deducted
+        period = BigNumber.from(await rewards.claimablePeriod(user1))
+        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
+      })
     })
 
-    it('minting doesn\'t increase the claimable', async () => {
-      await rewards.mint(user2, WAD)
-      let period = await rewards.claimablePeriod(user2)
+    describe('after the schedule', async () => {
+      beforeEach(async () => {
+        snapshotId = await ethers.provider.send('evm_snapshot', []);
+        await ethers.provider.send('evm_mine', [end + 10])
+      })
 
-      const { timestamp } = await ethers.provider.getBlock('latest')
-      almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
-    })
+      afterEach(async () => {
+        await ethers.provider.send('evm_revert', [snapshotId])
+      })
 
-    it('receiving doesn\'t increase the claimable', async () => {
+      it('calculates the claimable period', async () => {
+        expect(await rewards.claimablePeriod(user1)).to.equal(length)
+      })
     })
   })
 })
