@@ -57,24 +57,21 @@ describe('ERC20Rewards', async function () {
     await rewards.mint(user1, WAD);
 
     await rewards.grantRoles(
-      [id('setRewards(address,uint32,uint32,uint128,uint128)')],
+      [id('setRewards(address,uint32,uint32,uint256)')],
       owner
     )
   })
 
   it('sets a rewards token and schedule', async () => {
-    expect(await rewards.setRewards(governance.address, 1, 2, 3, 4))
+    expect(await rewards.setRewards(governance.address, 1, 2, 3))
     .to.emit(rewards, 'RewardsSet')
-    .withArgs(governance.address, 1, 2, 3, 4)
+    .withArgs(governance.address, 1, 2, 3)
 
     expect(await rewards.rewardToken()).to.equal(governance.address)
     const rewardPeriod = await rewards.rewardPeriod()
     expect(rewardPeriod.start).to.equal(1)
     expect(rewardPeriod.end).to.equal(2)
-
-    const rewardEmissions = await rewards.rewardEmissions()
-    expect(rewardEmissions.rate).to.equal(3)
-    expect(rewardEmissions.available).to.equal(4)
+    expect(await rewards.rewardRate()).to.equal(3)
   })
 
   describe('with a rewards schedule', async () => {
@@ -94,7 +91,8 @@ describe('ERC20Rewards', async function () {
     })
     
     beforeEach(async () => {
-      await rewards.setRewards(governance.address, start, end, 1, 1000000)
+      await rewards.setRewards(governance.address, start, end, 1)
+      await governance.mint(rewards.address, 2000000)
     })
 
     describe('before the schedule', async () => {
