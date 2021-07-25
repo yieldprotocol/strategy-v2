@@ -139,9 +139,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     /// @dev Transfer tokens, adjusting upwards the claimed rewards of the receiver to avoid double-counting.
     /// @notice The sender should batch the transfer with a `claim` before, to avoid losing rewards.
     function _transfer(address src, address dst, uint wad) internal virtual override returns (bool) {
-        uint256 adjustment = _claimablePeriod() * wad * rewardRate / averageSupply;
-        uint256 claimed_ = claimed[dst];
-        claimed[dst] = (adjustment >= claimed_) ? 0 : claimed_ + adjustment;
+        uint256 rewardsPerTokenPerSecond = rewardRate / averageSupply;
+        claimed[dst] += _claimablePeriod() * wad * rewardsPerTokenPerSecond; // Renounce to any claims from the received tokens
         return super._transfer(src, dst, wad);
     }
 }
