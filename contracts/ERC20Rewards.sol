@@ -85,12 +85,12 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     /// @dev Length of time into the rewards schedule.
     function _claimablePeriod()
         internal view
-        returns (uint32 userPeriod)
+        returns (uint32 period)
     {
         RewardPeriod memory rewardPeriod_ = rewardPeriod;
         uint32 start = block.timestamp.u32() > rewardPeriod_.start ? block.timestamp.u32() : rewardPeriod_.start; // max
         uint32 end = block.timestamp.u32() < rewardPeriod_.end ? block.timestamp.u32() : rewardPeriod_.end; // min
-        userPeriod = (end > start) ? end - start : 0;
+        period = (end > start) ? end - start : 0;
     }
 
     /// @dev Claimable rewards for a given user.
