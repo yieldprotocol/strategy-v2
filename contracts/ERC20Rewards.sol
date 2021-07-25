@@ -14,7 +14,9 @@ library CastU256U32 {
     }
 }
 
-/// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
+/// @dev A token inheriting from ERC20Rewards will reward token holders with a rewards token.
+/// The rewarded amount will be a fixed wei per second, distributed proportionally to token holders
+/// by the size of their holdings.
 contract ERC20Rewards is AccessControl, ERC20Permit {
     using CastU256U32 for uint256;
 
@@ -29,16 +31,16 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
 
     IERC20 public rewardToken;                      // Token used as rewards
     RewardPeriod public rewardPeriod;               // Reward period
-    uint256 public rewardRate;                      // Wei rewarded per second per 1e18 wei held
-    mapping (address => uint32) public lastClaimed; // Last time at which each user claimed rewards
+    uint256 public rewardRate;                      // Wei rewarded per second
+    uint256 public averageSupply;                   // Average supply from the start of the period until the last update
+    uint32 public lastUpdated;                      // Timestamp for the last liquidity event
+    mapping (address => uint256) public claimed;    // Amount claimed by each user so far
 
     constructor(string memory name, string memory symbol, uint8 decimals)
         ERC20Permit(name, symbol, decimals)
     { }
 
     /// @dev Set a rewards schedule
-    /// @notice The rewards token can be changed, but that won't affect past claims, use with care.
-    /// @notice There is only one schedule with one rate, so a change to the schedule will affect all unclaimed rewards, use with care.
     function setRewards(IERC20 rewardToken_, uint32 start, uint32 end, uint256 rate)
         public
         auth
@@ -54,26 +56,25 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         emit RewardsSet(rewardToken, start, end, rate);
     }
 
-    /// @dev Claim all rewards tokens available to the owner
+    /// @dev Claim all rewards from caller into a given address
     function claim(address to)
         public
         returns (uint256 claiming)
     {
-        claiming = _claimableAmount(msg.sender);
-        lastClaimed[msg.sender] = uint32(block.timestamp);
+        claimed[msg.sender] += claiming = _claimableAmount(msg.sender);
         rewardToken.transfer(to, claiming);
         emit Claimed(to, claiming);
     }
 
-    /// @dev Length of time that the user can claim rewards for.
-    function claimablePeriod(address user)
+    /// @dev Length of time into the rewards schedule.
+    function claimablePeriod()
         external view
         returns (uint32 period)
     {
-        return _claimablePeriod(user);
+        return _claimablePeriod();
     }
 
-    /// @dev The claimable rewardToken tokens are user balance multiplied by the emissions rate, counting from the time they last claimed.
+    /// @dev Claimable rewards for a given user.
     function claimableAmount(address user)
         external view
         returns (uint256 amount)
@@ -81,58 +82,66 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         return _claimableAmount(user);
     }
 
-    /// @dev Length of time that the user can claim rewards for.
-    function _claimablePeriod(address user)
+    /// @dev Length of time into the rewards schedule.
+    function _claimablePeriod()
         internal view
         returns (uint32 userPeriod)
     {
         RewardPeriod memory rewardPeriod_ = rewardPeriod;
-        uint32 lastClaimed_ = lastClaimed[user];
-        uint32 start = lastClaimed_ > rewardPeriod_.start ? lastClaimed_ : rewardPeriod_.start; // max
-        uint32 end = uint32(block.timestamp) < rewardPeriod_.end ? uint32(block.timestamp) : rewardPeriod_.end; // min
+        uint32 start = block.timestamp.u32() > rewardPeriod_.start ? block.timestamp.u32() : rewardPeriod_.start; // max
+        uint32 end = block.timestamp.u32() < rewardPeriod_.end ? block.timestamp.u32() : rewardPeriod_.end; // min
         userPeriod = (end > start) ? end - start : 0;
     }
 
-    /// @dev The claimable rewardToken tokens are user balance multiplied by the emissions rate, counting from the time they last claimed.
+    /// @dev Claimable rewards for a given user.
+    /// Elapsed rewards period * User holdings * Rewards per second per token - Already claimed rewards
     function _claimableAmount(address user)
         internal view
         returns (uint256 amount)
     {
-        amount = _balanceOf[user] * _claimablePeriod(user) * rewardRate / 1e18;
+        uint256 rewardsPerTokenPerSecond = rewardRate / averageSupply;
+        amount = _claimablePeriod() * _balanceOf[user] * rewardsPerTokenPerSecond - claimed[user];
     }
 
-    /// @dev Adjust the claimable tokens by increasing the claimed timestamp proportionally upwards with the tokens received.
-    /// In other words, any received tokens don't benefit from the accumulated claimable level.
-    function _adjustClaimable(address user, uint256 added)
+    /// @dev Update the average supply as the time-weighted average between the previous average until the previous update,
+    /// and the current supply level from the previous update until now.
+    function _update()
         internal
-        returns (uint32 adjustment)
+        returns (uint256 _averageSupply)
     {
-        if (lastClaimed[user] == 0) {
-            lastClaimed[user] = block.timestamp.u32();
-        } else {
-            uint256 oldBalance = _balanceOf[user];
-            uint256 newBalance = oldBalance + added;
+        uint32 storedEnd = (lastUpdated > rewardPeriod.start) ? lastUpdated : rewardPeriod.start;
+        uint32 storedPeriod = storedEnd - rewardPeriod.start;
+        uint32 currentEnd = (block.timestamp.u32() > rewardPeriod.end) ? rewardPeriod.end : block.timestamp.u32();
+        uint32 currentPeriod = currentEnd - block.timestamp.u32();
 
-            adjustment = ((_claimablePeriod(user) * (newBalance - oldBalance)) / newBalance).u32();
-            lastClaimed[user] += adjustment;
-            emit Claimable(user, adjustment);
-        }
+        averageSupply = _averageSupply =  (averageSupply * storedPeriod + _totalSupply * currentPeriod) / (storedPeriod + currentPeriod);
+        lastUpdated = block.timestamp.u32();
     }
 
-    /// @dev Mint strategy tokens. The underlying tokens that the user contributes need to have been transferred previously.
-    /// @notice The claimable rewards of the transferred strategy tokens are lost if burning. Batch `burn` with `claim`.
+    /// @dev Mint tokens, updating the supply average before.
     function _mint(address dst, uint256 wad)
         internal virtual override
         returns (bool)
     {
-        _adjustClaimable(dst, wad);
+        _update();
         return super._mint(dst, wad);
     }
 
-    /// @dev We adjust the claimable rewards of the receiver in a transfer
-    /// @notice The claimable rewards of the transferred strategy tokens are lost. Batch with `claim`.
+    /// @dev Burn tokens, updating the supply average before.
+    function _burn(address src, uint256 wad)
+        internal virtual override
+        returns (bool)
+    {
+        _update();
+        return super._burn(src, wad);
+    }
+
+    /// @dev Transfer tokens, adjusting upwards the claimed rewards of the receiver to avoid double-counting.
+    /// @notice The sender should batch the transfer with a `claim` before, to avoid losing rewards.
     function _transfer(address src, address dst, uint wad) internal virtual override returns (bool) {
-        _adjustClaimable(dst, wad);
+        uint256 adjustment = _claimablePeriod() * wad * rewardRate / averageSupply;
+        uint256 claimed_ = claimed[dst];
+        claimed[dst] = (adjustment >= claimed_) ? 0 : claimed_ + adjustment;
         return super._transfer(src, dst, wad);
     }
 }
