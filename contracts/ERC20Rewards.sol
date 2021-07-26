@@ -85,9 +85,9 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         emit RewardsSet(rewardsToken, start, end, rate);
     }
 
-    /// @dev Accumulate rewards for an user and update the rewards per token accumulator.
+    /// @dev Update the rewards per token accumulator.
     /// @notice Needs to be called on each liquidity event
-    function updateRewardsPerToken() internal returns (uint256 rewardsPerToken) {
+    function _updateRewardsPerToken() internal returns (uint256 rewardsPerToken) {
         uint32 start = latest(lastUpdated, rewardsPeriod.start);
         uint32 end = earliest(block.timestamp.u32(), rewardsPeriod.end);
         require (end > start, "Rewards schedule complete");
@@ -99,9 +99,9 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         emit RewardsPerToken(rewardsPerToken);
     }
 
-    /// @dev Accumulate rewards for an user and update the rewards per token accumulator.
-    /// @notice Needs to be called on each liquidity event
-    function updateUserRewards(address user) internal returns (uint256 userRewards) {
+    /// @dev Accumulate rewards for an user.
+    /// @notice Needs to be called on each liquidity event, or when user balances change.
+    function _updateUserRewards(address user) internal returns (uint256 userRewards) {
         uint256 rewardsPerTokenStored_ = rewardsPerTokenStored;
         userRewards = rewards[user] + _balanceOf[user] * (rewardsPerTokenStored_ - paidRewardPerToken[user]);
         rewards[user] = userRewards;
@@ -114,8 +114,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         internal virtual override
         returns (bool)
     {
-        updateRewardsPerToken();
-        updateUserRewards(msg.sender);
+        _updateRewardsPerToken();
+        _updateUserRewards(msg.sender);
         return super._mint(dst, wad);
     }
 
@@ -124,15 +124,15 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         internal virtual override
         returns (bool)
     {
-        updateRewardsPerToken();
-        updateUserRewards(msg.sender);
+        _updateRewardsPerToken();
+        _updateUserRewards(msg.sender);
         return super._burn(src, wad);
     }
 
-    /// @dev Transfer tokens, after accumulating rewards for an user and update the rewards per token accumulator.
-    /// @notice The sender should batch the transfer with a `claim` before, to avoid losing rewards.
+    /// @dev Transfer tokens, after updating rewards for source and destination.
     function _transfer(address src, address dst, uint wad) internal virtual override returns (bool) {
-        updateUserRewards(dst);
+        _updateUserRewards(src);
+        _updateUserRewards(dst);
         return super._transfer(src, dst, wad);
     }
 
@@ -141,9 +141,9 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         external
         returns (uint256 claiming)
     {
-        claiming = updateUserRewards(msg.sender);
+        claiming = _updateUserRewards(msg.sender);
         rewardsToken.transfer(to, claiming);
-        delete rewards[msg.sender];
+        delete rewards[msg.sender]; // A Claimed event implies the rewards were set to zero
         emit Claimed(to, claiming);
     }
 }
