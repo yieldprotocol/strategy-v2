@@ -55,7 +55,7 @@ describe('ERC20Rewards', async function () {
     rewards = (await deployContract(ownerAcc, ERC20RewardsMockArtifact, ["Token with rewards", "REW", 18])) as ERC20Rewards
 
     await rewards.grantRoles(
-      [id('setRewards(address,uint32,uint32,uint256)')],
+      [id('setRewards(address,uint32,uint32,uint96)')],
       owner
     )
   })
@@ -69,7 +69,7 @@ describe('ERC20Rewards', async function () {
     const rewardsPeriod = await rewards.rewardsPeriod()
     expect(rewardsPeriod.start).to.equal(1)
     expect(rewardsPeriod.end).to.equal(2)
-    expect(await rewards.rewardsRate()).to.equal(3)
+    expect((await rewards.rewardsPerToken()).rate).to.equal(3)
   })
 
   describe('with a rewards schedule', async () => {
