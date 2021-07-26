@@ -85,23 +85,25 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     }
 
     /// @dev Set a rewards schedule
-    /// TODO: Allow sequential schedules, each with their own supply accumulator and rewards accumulator. Only once active schdule at a time.
     function setRewards(IERC20 rewardsToken_, uint32 start, uint32 end, uint96 rate)
         public
         auth
     {
-        if (rewardsToken_ != IERC20(address(0))) rewardsToken = rewardsToken_; // TODO: Allow to change only after a safety period after end, to avoid affecting current claimable
+        // A new rewards program can be set once the current one is finished
+        require(block.timestamp.u32() >= rewardsPeriod.end, "Only after rewards period");
 
-        rewardsPeriod = RewardsPeriod({
-            start: start,
-            end: end
-        });
+        // If changed in a new rewards program, any unclaimed rewards from the last one will be served in the new token
+        rewardsToken = rewardsToken_;
 
-        rewardsPerToken = RewardsPerToken({
-            accumulated: 0,
-            lastUpdated: start,
-            rate: rate
-        });
+        rewardsPeriod.start = start;
+        rewardsPeriod.end = end;
+
+        // If setting up a new rewards program, the rewardsPerToken.accumulated is used and built upon
+        // New rewards start accumulating from the new rewards program start
+        // Any unaccounted rewards from last program can still be added to the user rewards
+        // Any unclaimed rewards can still be claimed
+        rewardsPerToken.lastUpdated = start;
+        rewardsPerToken.rate = rate;
 
         emit RewardsSet(rewardsToken, start, end, rate);
     }
