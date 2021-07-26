@@ -55,27 +55,35 @@ describe('ERC20Rewards', async function () {
     rewards = (await deployContract(ownerAcc, ERC20RewardsMockArtifact, ["Token with rewards", "REW", 18])) as ERC20Rewards
 
     await rewards.grantRoles(
-      [id('setRewards(address,uint32,uint32,uint96)')],
+      [
+        id('setRewards(address,uint32,uint32,uint96)'),
+        id('activateRewards(uint32)')
+      ],
       owner
     )
   })
 
   it('sets a rewards token and schedule', async () => {
-    expect(await rewards.setRewards(governance.address, 1, 2, 3))
+    const start = 1;
+    const end = 2;
+    const rate = 3;
+    const scheme = start
+    expect(await rewards.setRewards(governance.address, start, end, rate))
     .to.emit(rewards, 'RewardsSet')
-    .withArgs(governance.address, 1, 2, 3)
+    .withArgs(governance.address, start, end, rate)
 
-    expect(await rewards.rewardsToken()).to.equal(governance.address)
-    const rewardsPeriod = await rewards.rewardsPeriod()
-    expect(rewardsPeriod.start).to.equal(1)
-    expect(rewardsPeriod.end).to.equal(2)
-    expect((await rewards.rewardsPerToken()).rate).to.equal(3)
+    expect(await rewards.rewardsToken(scheme)).to.equal(governance.address)
+    const rewardsPeriod = await rewards.rewardsPeriod(scheme)
+    expect(rewardsPeriod.start).to.equal(start)
+    expect(rewardsPeriod.end).to.equal(end)
+    expect((await rewards.rewardsPerToken(scheme)).rate).to.equal(rate)
   })
 
   describe('with a rewards schedule', async () => {
     let snapshotId: string
     let timestamp: number
     let start: number
+    let scheme: number
     let length: number
     let mid: number
     let end: number
@@ -88,12 +96,14 @@ describe('ERC20Rewards', async function () {
       mid = start + length / 2
       end = start + length
       rate = WAD.div(length)
+      scheme = start
     })
     
     beforeEach(async () => {
       await rewards.setRewards(governance.address, start, end, rate)
       await governance.mint(rewards.address, WAD)
       await rewards.mint(user1, WAD) // So that total supply is not zero
+      await rewards.activateRewards(scheme)
     })
 
     /* describe('before the schedule', async () => {
@@ -116,7 +126,7 @@ describe('ERC20Rewards', async function () {
         ({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         almostEqual(
-          (await rewards.rewardsPerToken()).accumulated,
+          (await rewards.rewardsPerToken(0)).accumulated,
           BigNumber.from(timestamp - start).mul(rate), //  ... * 1e18 / totalSupply = ... * WAD / WAD
           BigNumber.from(timestamp - start).mul(rate).div(100000)
         )
@@ -125,9 +135,9 @@ describe('ERC20Rewards', async function () {
       it('updates user rewards on mint', async () => {
         ({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
-        const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
+        const rewardsPerToken = (await rewards.rewardsPerToken(0)).accumulated
         almostEqual(
-          (await rewards.rewards(user1)).accumulated,
+          (await rewards.rewards(user1, 0)).accumulated,
           rewardsPerToken, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
           rewardsPerToken.div(100000)
         )

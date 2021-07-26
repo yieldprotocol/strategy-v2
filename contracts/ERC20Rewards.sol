@@ -30,10 +30,11 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     using CastU256U32 for uint256;
     using CastU256U128 for uint256;
 
-    event RewardsSet(IERC20 rewardsToken, uint32 start, uint32 end, uint256 rate);
-    event RewardsPerTokenUpdated(uint256 accumulated);
-    event UserRewardsUpdated(address user, uint256 userRewards, uint256 paidRewardPerToken);
-    event Claimed(address receiver, uint256 claimed);
+    event RewardsSet(IERC20 indexed rewardsToken, uint32 indexed start, uint32 end, uint256 rate);
+    event RewardsActivated(uint32 indexed id);
+    event RewardsPerTokenUpdated(uint32 indexed scheme, uint256 accumulated);
+    event UserRewardsUpdated(address indexed user, uint32 indexed scheme, uint256 userRewards, uint256 paidRewardPerToken);
+    event Claimed(address indexed receiver, uint32 indexed scheme, uint256 claimed);
 
     struct RewardsPeriod {
         uint32 start;                                   // Start time for the current rewardsToken schedule
@@ -51,11 +52,11 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         uint128 checkpoint;                             // RewardsPerToken the last time the user rewards were updated
     }
 
-    IERC20 public rewardsToken;                         // Token used as rewards
-    RewardsPeriod public rewardsPeriod;                 // Period in which rewards are accumulated by users
+    mapping(uint32 => IERC20) public rewardsToken;             // Token used as rewards
+    mapping(uint32 => RewardsPeriod) public rewardsPeriod;     // Period in which rewards are accumulated by users
+    mapping(uint32 => RewardsPerToken) public rewardsPerToken; // Accumulator to track rewards per token
 
-    RewardsPerToken public rewardsPerToken;             // Accumulator to track rewards per token               
-    mapping (address => UserRewards) public rewards;    // Rewards accumulated by users
+    mapping (address => mapping(uint32 => UserRewards)) public rewards;    // Rewards accumulated by users for each rewards scheme
     
     constructor(string memory name, string memory symbol, uint8 decimals)
         ERC20Permit(name, symbol, decimals)
@@ -85,36 +86,60 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     }
 
     /// @dev Set a rewards schedule
-    /// TODO: Allow sequential schedules, each with their own supply accumulator and rewards accumulator. Only once active schdule at a time.
+    /// @notice The start time is used as the scheme identifier, and a start time of zero is not allowed
+    /// because the zero id is used to identify the active scheme
     function setRewards(IERC20 rewardsToken_, uint32 start, uint32 end, uint96 rate)
         public
         auth
     {
-        if (rewardsToken_ != IERC20(address(0))) rewardsToken = rewardsToken_; // TODO: Allow to change only after a safety period after end, to avoid affecting current claimable
+        require(start > 0, "Start time can't be zero");
 
-        rewardsPeriod = RewardsPeriod({
+        rewardsToken[start] = rewardsToken_;
+
+        rewardsPeriod[start] = RewardsPeriod({
             start: start,
             end: end
         });
 
-        rewardsPerToken = RewardsPerToken({
+        rewardsPerToken[start] = RewardsPerToken({
             accumulated: 0,
             lastUpdated: start,
             rate: rate
         });
 
-        emit RewardsSet(rewardsToken, start, end, rate);
+        emit RewardsSet(rewardsToken_, start, end, rate);
+    }
+
+    function activateRewards(uint32 scheme)
+        public
+        auth
+    {
+        require(block.timestamp.u32() > rewardsPeriod[0].end, "Previous rewards active");
+        uint32 previousScheme = rewardsPeriod[0].end;
+
+
+        if (previousScheme != 0) {
+            rewardsToken[previousScheme] = rewardsToken[0];
+            rewardsPeriod[previousScheme] = rewardsPeriod[0];
+            rewardsPerToken[previousScheme] = rewardsPerToken[0];
+        }
+
+        rewardsToken[0] = rewardsToken[scheme];
+        rewardsPeriod[0] = rewardsPeriod[scheme];
+        rewardsPerToken[0] = rewardsPerToken[scheme];
+
+        emit RewardsActivated(scheme);
     }
 
     /// @dev Update the rewards per token accumulator.
     /// @notice Needs to be called on each liquidity event
-    function _updateRewardsPerToken() internal returns (uint128) {
-        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken;
-        RewardsPeriod memory rewardsPeriod_ = rewardsPeriod;
+    function _updateRewardsPerToken() internal returns (uint32, uint128) {
+        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken[0];
+        RewardsPeriod memory rewardsPeriod_ = rewardsPeriod[0];
 
         // We skip the calculations if we can
-        if (_totalSupply == 0 || block.timestamp.u32() < rewardsPeriod_.start) return 0;
-        if (rewardsPerToken_.lastUpdated >= rewardsPeriod_.end) return rewardsPerToken_.accumulated;
+        if (_totalSupply == 0 || block.timestamp.u32() < rewardsPeriod_.start) return (rewardsPeriod_.start, 0);
+        if (rewardsPerToken_.lastUpdated >= rewardsPeriod_.end) return (rewardsPeriod_.end, rewardsPerToken_.accumulated);
 
         // Find out the unaccounted period
         uint32 end = earliest(block.timestamp.u32(), rewardsPeriod_.end);
@@ -123,24 +148,24 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         // Calculate and update the new value of the accumulator. timeSinceLastUpdated casts it into uint256, which is desired.
         rewardsPerToken_.accumulated = (rewardsPerToken_.accumulated + 1e18 * timeSinceLastUpdated * rewardsPerToken_.rate / _totalSupply).u128(); // The rewards per token are scaled up for precision
         rewardsPerToken_.lastUpdated = end;
-        rewardsPerToken = rewardsPerToken_;
+        rewardsPerToken[0] = rewardsPerToken_;
         
-        emit RewardsPerTokenUpdated(rewardsPerToken_.accumulated);
+        emit RewardsPerTokenUpdated(rewardsPeriod_.start, rewardsPerToken_.accumulated);
 
-        return rewardsPerToken_.accumulated;
+        return (rewardsPeriod_.start, rewardsPerToken_.accumulated);
     }
 
     /// @dev Accumulate rewards for an user.
     /// @notice Needs to be called on each liquidity event, or when user balances change.
-    function _updateUserRewards(address user) internal returns (uint128) {
-        UserRewards memory userRewards_ = rewards[user];
-        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken;
+    function _updateUserRewards(address user, uint32 scheme) internal returns (uint128) {
+        UserRewards memory userRewards_ = rewards[user][scheme];
+        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken[0];
         
         // Calculate and update the new value user reserves. _balanceOf[user] casts it into uint256, which is desired.
         userRewards_.accumulated = (userRewards_.accumulated + _balanceOf[user] * (rewardsPerToken_.accumulated - userRewards_.checkpoint) / 1e18).u128(); // We must scale down the rewards by the precision factor
         userRewards_.checkpoint = rewardsPerToken_.accumulated;
-        rewards[user] = userRewards_;
-        emit UserRewardsUpdated(user, userRewards_.accumulated, userRewards_.checkpoint);
+        rewards[user][scheme] = userRewards_;
+        emit UserRewardsUpdated(user, scheme, userRewards_.accumulated, userRewards_.checkpoint);
 
         return userRewards_.accumulated;
     }
@@ -150,8 +175,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         internal virtual override
         returns (bool)
     {
-        _updateRewardsPerToken();
-        _updateUserRewards(dst);
+        (uint32 scheme, ) = _updateRewardsPerToken();
+        _updateUserRewards(dst, scheme);
         return super._mint(dst, wad);
     }
 
@@ -160,26 +185,27 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         internal virtual override
         returns (bool)
     {
-        _updateRewardsPerToken();
-        _updateUserRewards(src);
+        (uint32 scheme, ) = _updateRewardsPerToken();
+        _updateUserRewards(src, scheme);
         return super._burn(src, wad);
     }
 
     /// @dev Transfer tokens, after updating rewards for source and destination.
     function _transfer(address src, address dst, uint wad) internal virtual override returns (bool) {
-        _updateUserRewards(src);
-        _updateUserRewards(dst);
+        uint32 scheme = rewardsPeriod[0].start;
+        _updateUserRewards(src, scheme);
+        _updateUserRewards(dst, scheme);
         return super._transfer(src, dst, wad);
     }
 
     /// @dev Claim all rewards from caller into a given address
-    function claim(address to)
+    function claim(address to, uint32 scheme)
         external
         returns (uint256 claiming)
     {
-        claiming = _updateUserRewards(msg.sender);
-        rewards[msg.sender].accumulated = 0; // A Claimed event implies the rewards were set to zero
-        rewardsToken.transfer(to, claiming);
-        emit Claimed(to, claiming);
+        claiming = _updateUserRewards(msg.sender, scheme);
+        rewards[msg.sender][scheme].accumulated = 0; // A Claimed event implies the rewards were set to zero
+        rewardsToken[scheme].transfer(to, claiming);
+        emit Claimed(to, scheme, claiming);
     }
 }
