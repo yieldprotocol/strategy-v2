@@ -26,16 +26,16 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     event UserRewards(address user, uint256 userRewards, uint256 rewardsPerTokenStored);
     event Claimed(address receiver, uint256 claimed);
 
-    struct RewardPeriod {
+    struct RewardsPeriod {
         uint32 start;                                   // Start time for the current rewardsToken schedule
         uint32 end;                                     // End time for the current rewardsToken schedule
     }
 
     IERC20 public rewardsToken;                         // Token used as rewards
-    RewardPeriod public rewardsPeriod;                  // Period in which rewards are accumulated by users
-    uint256 public rewardsRate;                         // Wei rewarded per second
+    RewardsPeriod public rewardsPeriod;                  // Period in which rewards are accumulated by users
+    uint256 public rewardsRate;                         // Wei rewarded per second among all token holders
 
-    uint256 public rewardsPerTokenStored;               // Accumulated rewards per token for the period
+    uint256 public rewardsPerTokenStored;               // Accumulated rewards per token (1e18) for the period
     uint32 public lastUpdated;                          // Last time the rewards per token accumulator was updated
 
     mapping (address => uint256) public rewards;        // Rewards accumulated by users
@@ -76,26 +76,29 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     {
         if (rewardsToken_ != IERC20(address(0))) rewardsToken = rewardsToken_; // TODO: Allow to change only after a safety period after end, to avoid affecting current claimable
 
-        RewardPeriod memory rewardsPeriod_ = rewardsPeriod;
+        RewardsPeriod memory rewardsPeriod_ = rewardsPeriod;
         rewardsPeriod_.start = start;
         rewardsPeriod_.end = end;
         rewardsPeriod = rewardsPeriod_;
 
         rewardsRate = rate;
+
+        lastUpdated = start; // 
         emit RewardsSet(rewardsToken, start, end, rate);
     }
 
     /// @dev Update the rewards per token accumulator.
     /// @notice Needs to be called on each liquidity event
     function _updateRewardsPerToken() internal returns (uint256 rewardsPerToken) {
-        uint32 start = latest(lastUpdated, rewardsPeriod.start);
-        uint32 end = earliest(block.timestamp.u32(), rewardsPeriod.end);
-        require (end > start, "Rewards schedule complete");
-        uint32 timeSinceLastUpdated = end - start;
+        if (_totalSupply == 0 || block.timestamp.u32() < rewardsPeriod.start) return 0;
+        if (lastUpdated >= rewardsPeriod.end) return rewardsPerTokenStored;
 
-        rewardsPerToken = rewardsPerTokenStored + timeSinceLastUpdated * rewardsRate / _totalSupply;
+        uint32 end = earliest(block.timestamp.u32(), rewardsPeriod.end);
+        uint256 timeSinceLastUpdated = end - lastUpdated; // Cast out to avoid overflows later on
+
+        rewardsPerToken = rewardsPerTokenStored + 1e18 * timeSinceLastUpdated * rewardsRate / _totalSupply; // The rewards per token are scaled up for precision
         rewardsPerTokenStored = rewardsPerToken;
-        lastUpdated = earliest(block.timestamp.u32(), rewardsPeriod.end);
+        lastUpdated = end;
         emit RewardsPerToken(rewardsPerToken);
     }
 
@@ -103,7 +106,9 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     /// @notice Needs to be called on each liquidity event, or when user balances change.
     function _updateUserRewards(address user) internal returns (uint256 userRewards) {
         uint256 rewardsPerTokenStored_ = rewardsPerTokenStored;
-        userRewards = rewards[user] + _balanceOf[user] * (rewardsPerTokenStored_ - paidRewardPerToken[user]);
+        
+        userRewards = rewards[user] + _balanceOf[user] * (rewardsPerTokenStored_ - paidRewardPerToken[user]) / 1e18; // We must scale down the rewards by the precision factor
+
         rewards[user] = userRewards;
         paidRewardPerToken[user] = rewardsPerTokenStored_;
         emit UserRewards(user, userRewards, rewardsPerTokenStored_);
@@ -115,7 +120,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         returns (bool)
     {
         _updateRewardsPerToken();
-        _updateUserRewards(msg.sender);
+        _updateUserRewards(dst);
         return super._mint(dst, wad);
     }
 
@@ -125,7 +130,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         returns (bool)
     {
         _updateRewardsPerToken();
-        _updateUserRewards(msg.sender);
+        _updateUserRewards(src);
         return super._burn(src, wad);
     }
 

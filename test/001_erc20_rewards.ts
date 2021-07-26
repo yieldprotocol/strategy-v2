@@ -54,8 +54,6 @@ describe('ERC20Rewards', async function () {
     governance = (await deployContract(ownerAcc, ERC20MockArtifact, ["Governance Token", "GOV", 18])) as ERC20
     rewards = (await deployContract(ownerAcc, ERC20RewardsMockArtifact, ["Token with rewards", "REW", 18])) as ERC20Rewards
 
-    await rewards.mint(user1, WAD);
-
     await rewards.grantRoles(
       [id('setRewards(address,uint32,uint32,uint256)')],
       owner
@@ -67,11 +65,11 @@ describe('ERC20Rewards', async function () {
     .to.emit(rewards, 'RewardsSet')
     .withArgs(governance.address, 1, 2, 3)
 
-    expect(await rewards.rewardToken()).to.equal(governance.address)
-    const rewardPeriod = await rewards.rewardPeriod()
-    expect(rewardPeriod.start).to.equal(1)
-    expect(rewardPeriod.end).to.equal(2)
-    expect(await rewards.rewardRate()).to.equal(3)
+    expect(await rewards.rewardsToken()).to.equal(governance.address)
+    const rewardsPeriod = await rewards.rewardsPeriod()
+    expect(rewardsPeriod.start).to.equal(1)
+    expect(rewardsPeriod.end).to.equal(2)
+    expect(await rewards.rewardsRate()).to.equal(3)
   })
 
   describe('with a rewards schedule', async () => {
@@ -81,6 +79,7 @@ describe('ERC20Rewards', async function () {
     let length: number
     let mid: number
     let end: number
+    let rate: BigNumber
     
     before(async () => {
       ({ timestamp } = await ethers.provider.getBlock('latest'))
@@ -88,18 +87,20 @@ describe('ERC20Rewards', async function () {
       length = 2000000
       mid = start + length / 2
       end = start + length
+      rate = WAD.div(length)
     })
     
     beforeEach(async () => {
-      await rewards.setRewards(governance.address, start, end, 1)
-      await governance.mint(rewards.address, 2000000)
+      await rewards.setRewards(governance.address, start, end, rate)
+      await governance.mint(rewards.address, WAD)
+      await rewards.mint(user1, WAD) // So that total supply is not zero
     })
 
-    describe('before the schedule', async () => {
+    /* describe('before the schedule', async () => {
       it('calculates the claimable period', async () => {
         almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(0), BigNumber.from(10))
       })
-    })
+    }) */
 
     describe('during the schedule', async () => {
       beforeEach(async () => {
@@ -111,16 +112,28 @@ describe('ERC20Rewards', async function () {
         await ethers.provider.send('evm_revert', [snapshotId])
       })
 
-      it('calculates the claimable period', async () => {
-        almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(length / 2), BigNumber.from(10))
+      it('updates rewards per token on mint', async () => {
+        ({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        almostEqual(
+          await rewards.rewardsPerTokenStored(),
+          BigNumber.from(timestamp - start).mul(rate), //  ... * 1e18 / totalSupply = ... * WAD / WAD
+          BigNumber.from(timestamp - start).mul(rate).div(100000)
+        )
       })
 
-      it('calculates the claimable amount', async () => {
-        const period = BigNumber.from(await rewards.claimablePeriod(user1))
-        expect(await rewards.claimableAmount(user1)).to.equal(period)
+      it('updates user rewards on mint', async () => {
+        ({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        const rewardsPerTokenStored = await rewards.rewardsPerTokenStored()
+        almostEqual(
+          await rewards.rewards(user1),
+          rewardsPerTokenStored, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
+          rewardsPerTokenStored.div(100000)
+        )
       })
 
-      it('minting doesn\'t change the claimable', async () => {
+      /* it('minting doesn\'t change the claimable', async () => {
         await rewards.mint(user2, WAD)
         almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
       })
@@ -149,10 +162,10 @@ describe('ERC20Rewards', async function () {
         // After claiming, the claimable amount is deducted
         period = BigNumber.from(await rewards.claimablePeriod(user1))
         almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
-      })
+      }) */
     })
 
-    describe('after the schedule', async () => {
+    /* describe('after the schedule', async () => {
       beforeEach(async () => {
         snapshotId = await ethers.provider.send('evm_snapshot', []);
         await ethers.provider.send('evm_mine', [end + 10])
@@ -165,6 +178,6 @@ describe('ERC20Rewards', async function () {
       it('calculates the claimable period', async () => {
         expect(await rewards.claimablePeriod(user1)).to.equal(length)
       })
-    })
+    }) */
   })
 })
