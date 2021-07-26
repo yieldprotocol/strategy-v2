@@ -127,7 +127,7 @@ describe('ERC20Rewards', async function () {
         await rewards.mint(user1, WAD)
         const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
         almostEqual(
-          await rewards.rewards(user1),
+          (await rewards.rewards(user1)).accumulated,
           rewardsPerToken, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
           rewardsPerToken.div(100000)
         )

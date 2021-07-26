@@ -46,13 +46,16 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         uint96 rate;                                    // Wei rewarded per second among all token holders
     }
 
+    struct UserRewards {
+        uint128 accumulated;                            // Accumulated rewards for the user until the checkpoint
+        uint128 checkpoint;                             // RewardsPerToken the last time the user rewards were updated
+    }
+
     IERC20 public rewardsToken;                         // Token used as rewards
     RewardsPeriod public rewardsPeriod;                 // Period in which rewards are accumulated by users
 
     RewardsPerToken public rewardsPerToken;             // Accumulator to track rewards per token               
-
-    mapping (address => uint128) public rewards;        // Rewards accumulated by users
-    mapping (address => uint128) public paidRewardPerToken;    // Last rewards per token level accumulated by each user
+    mapping (address => UserRewards) public rewards;    // Rewards accumulated by users
     
     constructor(string memory name, string memory symbol, uint8 decimals)
         ERC20Permit(name, symbol, decimals)
@@ -129,14 +132,17 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
 
     /// @dev Accumulate rewards for an user.
     /// @notice Needs to be called on each liquidity event, or when user balances change.
-    function _updateUserRewards(address user) internal returns (uint128 userRewards) {
+    function _updateUserRewards(address user) internal returns (uint128) {
+        UserRewards memory userRewards_ = rewards[user];
         RewardsPerToken memory rewardsPerToken_ = rewardsPerToken;
         
         // Calculate and update the new value user reserves. _balanceOf[user] casts it into uint256, which is desired.
-        userRewards = (rewards[user] + _balanceOf[user] * (rewardsPerToken_.accumulated - paidRewardPerToken[user]) / 1e18).u128(); // We must scale down the rewards by the precision factor
-        rewards[user] = userRewards;
-        paidRewardPerToken[user] = rewardsPerToken_.accumulated;
-        emit UserRewardsUpdated(user, userRewards, rewardsPerToken_.accumulated);
+        userRewards_.accumulated = (userRewards_.accumulated + _balanceOf[user] * (rewardsPerToken_.accumulated - userRewards_.checkpoint) / 1e18).u128(); // We must scale down the rewards by the precision factor
+        userRewards_.checkpoint = rewardsPerToken_.accumulated;
+        rewards[user] = userRewards_;
+        emit UserRewardsUpdated(user, userRewards_.accumulated, userRewards_.checkpoint);
+
+        return userRewards_.accumulated;
     }
 
     /// @dev Mint tokens, after accumulating rewards for an user and update the rewards per token accumulator.
@@ -172,8 +178,8 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         returns (uint256 claiming)
     {
         claiming = _updateUserRewards(msg.sender);
+        rewards[msg.sender].accumulated = 0; // A Claimed event implies the rewards were set to zero
         rewardsToken.transfer(to, claiming);
-        delete rewards[msg.sender]; // A Claimed event implies the rewards were set to zero
         emit Claimed(to, claiming);
     }
 }
