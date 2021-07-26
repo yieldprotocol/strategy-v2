@@ -116,7 +116,7 @@ describe('ERC20Rewards', async function () {
         ({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         almostEqual(
-          await rewards.rewardsPerTokenStored(),
+          (await rewards.rewardsPerToken()).accumulated,
           BigNumber.from(timestamp - start).mul(rate), //  ... * 1e18 / totalSupply = ... * WAD / WAD
           BigNumber.from(timestamp - start).mul(rate).div(100000)
         )
@@ -125,11 +125,11 @@ describe('ERC20Rewards', async function () {
       it('updates user rewards on mint', async () => {
         ({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
-        const rewardsPerTokenStored = await rewards.rewardsPerTokenStored()
+        const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
         almostEqual(
           await rewards.rewards(user1),
-          rewardsPerTokenStored, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
-          rewardsPerTokenStored.div(100000)
+          rewardsPerToken, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
+          rewardsPerToken.div(100000)
         )
       })
 

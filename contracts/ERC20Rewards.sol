@@ -15,15 +15,24 @@ library CastU256U32 {
     }
 }
 
+library CastU256U128 {
+    /// @dev Safely cast an uint256 to an uint128
+    function u128(uint256 x) internal pure returns (uint128 y) {
+        require (x <= type(uint128).max, "Cast overflow");
+        y = uint128(x);
+    }
+}
+
 /// @dev A token inheriting from ERC20Rewards will reward token holders with a rewards token.
 /// The rewarded amount will be a fixed wei per second, distributed proportionally to token holders
 /// by the size of their holdings.
 contract ERC20Rewards is AccessControl, ERC20Permit {
     using CastU256U32 for uint256;
+    using CastU256U128 for uint256;
 
     event RewardsSet(IERC20 rewardsToken, uint32 start, uint32 end, uint256 rate);
-    event RewardsPerToken(uint256 rewardsPerToken);
-    event UserRewards(address user, uint256 userRewards, uint256 rewardsPerTokenStored);
+    event RewardsPerTokenUpdated(uint256 accumulated);
+    event UserRewardsUpdated(address user, uint256 userRewards, uint256 paidRewardPerToken);
     event Claimed(address receiver, uint256 claimed);
 
     struct RewardsPeriod {
@@ -31,15 +40,19 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         uint32 end;                                     // End time for the current rewardsToken schedule
     }
 
+    struct RewardsPerToken {
+        uint128 accumulated;                            // Accumulated rewards per token for the period, scaled up by 1e18
+        uint32 lastUpdated;                             // Last time the rewards per token accumulator was updated
+    }
+
     IERC20 public rewardsToken;                         // Token used as rewards
-    RewardsPeriod public rewardsPeriod;                  // Period in which rewards are accumulated by users
+    RewardsPeriod public rewardsPeriod;                 // Period in which rewards are accumulated by users
     uint256 public rewardsRate;                         // Wei rewarded per second among all token holders
 
-    uint256 public rewardsPerTokenStored;               // Accumulated rewards per token (1e18) for the period
-    uint32 public lastUpdated;                          // Last time the rewards per token accumulator was updated
+    RewardsPerToken public rewardsPerToken;             // Accumulator to track rewards per token               
 
-    mapping (address => uint256) public rewards;        // Rewards accumulated by users
-    mapping (address => uint256) public paidRewardPerToken;    // Last rewards per token level accumulated by each user
+    mapping (address => uint128) public rewards;        // Rewards accumulated by users
+    mapping (address => uint128) public paidRewardPerToken;    // Last rewards per token level accumulated by each user
     
     constructor(string memory name, string memory symbol, uint8 decimals)
         ERC20Permit(name, symbol, decimals)
@@ -76,42 +89,54 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
     {
         if (rewardsToken_ != IERC20(address(0))) rewardsToken = rewardsToken_; // TODO: Allow to change only after a safety period after end, to avoid affecting current claimable
 
-        RewardsPeriod memory rewardsPeriod_ = rewardsPeriod;
-        rewardsPeriod_.start = start;
-        rewardsPeriod_.end = end;
-        rewardsPeriod = rewardsPeriod_;
+        rewardsPeriod = RewardsPeriod({
+            start: start,
+            end: end
+        });
+
+        rewardsPerToken = RewardsPerToken({
+            accumulated: 0,
+            lastUpdated: start
+        });
 
         rewardsRate = rate;
 
-        lastUpdated = start; // 
         emit RewardsSet(rewardsToken, start, end, rate);
     }
 
     /// @dev Update the rewards per token accumulator.
     /// @notice Needs to be called on each liquidity event
-    function _updateRewardsPerToken() internal returns (uint256 rewardsPerToken) {
+    function _updateRewardsPerToken() internal returns (uint128) {
+        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken;
+
+        // We skip the calculations if we can
         if (_totalSupply == 0 || block.timestamp.u32() < rewardsPeriod.start) return 0;
-        if (lastUpdated >= rewardsPeriod.end) return rewardsPerTokenStored;
+        if (rewardsPerToken_.lastUpdated >= rewardsPeriod.end) return rewardsPerToken_.accumulated;
 
+        // Find out the unaccounted period
         uint32 end = earliest(block.timestamp.u32(), rewardsPeriod.end);
-        uint256 timeSinceLastUpdated = end - lastUpdated; // Cast out to avoid overflows later on
+        uint256 timeSinceLastUpdated = end - rewardsPerToken_.lastUpdated; // Cast to uint256 to avoid overflows later on
 
-        rewardsPerToken = rewardsPerTokenStored + 1e18 * timeSinceLastUpdated * rewardsRate / _totalSupply; // The rewards per token are scaled up for precision
-        rewardsPerTokenStored = rewardsPerToken;
-        lastUpdated = end;
-        emit RewardsPerToken(rewardsPerToken);
+        // Calculate and update the new value of the accumulator
+        rewardsPerToken_.accumulated = (rewardsPerToken_.accumulated + 1e18 * timeSinceLastUpdated * rewardsRate / _totalSupply).u128(); // The rewards per token are scaled up for precision
+        rewardsPerToken_.lastUpdated = end;
+        rewardsPerToken = rewardsPerToken_;
+        
+        emit RewardsPerTokenUpdated(rewardsPerToken_.accumulated);
+
+        return rewardsPerToken_.accumulated;
     }
 
     /// @dev Accumulate rewards for an user.
     /// @notice Needs to be called on each liquidity event, or when user balances change.
-    function _updateUserRewards(address user) internal returns (uint256 userRewards) {
-        uint256 rewardsPerTokenStored_ = rewardsPerTokenStored;
+    function _updateUserRewards(address user) internal returns (uint128 userRewards) {
+        RewardsPerToken memory rewardsPerToken_ = rewardsPerToken;
         
-        userRewards = rewards[user] + _balanceOf[user] * (rewardsPerTokenStored_ - paidRewardPerToken[user]) / 1e18; // We must scale down the rewards by the precision factor
+        userRewards = (rewards[user] + _balanceOf[user] * (rewardsPerToken_.accumulated - paidRewardPerToken[user]) / 1e18).u128(); // We must scale down the rewards by the precision factor
 
         rewards[user] = userRewards;
-        paidRewardPerToken[user] = rewardsPerTokenStored_;
-        emit UserRewards(user, userRewards, rewardsPerTokenStored_);
+        paidRewardPerToken[user] = rewardsPerToken_.accumulated;
+        emit UserRewardsUpdated(user, userRewards, rewardsPerToken_.accumulated);
     }
 
     /// @dev Mint tokens, after accumulating rewards for an user and update the rewards per token accumulator.
