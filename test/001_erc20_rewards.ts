@@ -4,7 +4,6 @@ import { constants, id } from '@yield-protocol/utils-v2'
 const { WAD, MAX256 } = constants
 const MAX = MAX256
 
-
 import ERC20MockArtifact from '../artifacts/contracts/mocks/ERC20Mock.sol/ERC20Mock.json'
 import ERC20RewardsMockArtifact from '../artifacts/contracts/mocks/ERC20RewardsMock.sol/ERC20RewardsMock.json'
 import { ERC20Mock as ERC20 } from '../typechain/ERC20Mock'
@@ -31,10 +30,10 @@ describe('ERC20Rewards', async function () {
   let user1Acc: SignerWithAddress
   let user2: string
 
-  let governance: ERC20;
-  let rewards: ERC20Rewards;
+  let governance: ERC20
+  let rewards: ERC20Rewards
 
-  async function fixture() { } // For now we just use this to snapshot and revert the state of the blockchain
+  async function fixture() {} // For now we just use this to snapshot and revert the state of the blockchain
 
   before(async () => {
     await loadFixture(fixture) // This snapshots the blockchain as a side effect
@@ -51,19 +50,20 @@ describe('ERC20Rewards', async function () {
   })
 
   beforeEach(async () => {
-    governance = (await deployContract(ownerAcc, ERC20MockArtifact, ["Governance Token", "GOV", 18])) as ERC20
-    rewards = (await deployContract(ownerAcc, ERC20RewardsMockArtifact, ["Token with rewards", "REW", 18])) as ERC20Rewards
+    governance = (await deployContract(ownerAcc, ERC20MockArtifact, ['Governance Token', 'GOV', 18])) as ERC20
+    rewards = (await deployContract(ownerAcc, ERC20RewardsMockArtifact, [
+      'Token with rewards',
+      'REW',
+      18,
+    ])) as ERC20Rewards
 
-    await rewards.grantRoles(
-      [id('setRewards(address,uint32,uint32,uint96)')],
-      owner
-    )
+    await rewards.grantRoles([id('setRewards(address,uint32,uint32,uint96)')], owner)
   })
 
   it('sets a rewards token and schedule', async () => {
     expect(await rewards.setRewards(governance.address, 1, 2, 3))
-    .to.emit(rewards, 'RewardsSet')
-    .withArgs(governance.address, 1, 2, 3)
+      .to.emit(rewards, 'RewardsSet')
+      .withArgs(governance.address, 1, 2, 3)
 
     expect(await rewards.rewardsToken()).to.equal(governance.address)
     const rewardsPeriod = await rewards.rewardsPeriod()
@@ -80,16 +80,16 @@ describe('ERC20Rewards', async function () {
     let mid: number
     let end: number
     let rate: BigNumber
-    
+
     before(async () => {
-      ({ timestamp } = await ethers.provider.getBlock('latest'))
+      ;({ timestamp } = await ethers.provider.getBlock('latest'))
       start = timestamp + 1000000
       length = 2000000
       mid = start + length / 2
       end = start + length
       rate = WAD.div(length)
     })
-    
+
     beforeEach(async () => {
       await rewards.setRewards(governance.address, start, end, rate)
       await governance.mint(rewards.address, WAD)
@@ -104,7 +104,7 @@ describe('ERC20Rewards', async function () {
 
     describe('during the schedule', async () => {
       beforeEach(async () => {
-        snapshotId = await ethers.provider.send('evm_snapshot', []);
+        snapshotId = await ethers.provider.send('evm_snapshot', [])
         await ethers.provider.send('evm_mine', [mid])
       })
 
@@ -113,17 +113,19 @@ describe('ERC20Rewards', async function () {
       })
 
       it('updates rewards per token on mint', async () => {
-        ({ timestamp } = await ethers.provider.getBlock('latest'))
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         almostEqual(
           (await rewards.rewardsPerToken()).accumulated,
           BigNumber.from(timestamp - start).mul(rate), //  ... * 1e18 / totalSupply = ... * WAD / WAD
-          BigNumber.from(timestamp - start).mul(rate).div(100000)
+          BigNumber.from(timestamp - start)
+            .mul(rate)
+            .div(100000)
         )
       })
 
       it('updates user rewards on mint', async () => {
-        ({ timestamp } = await ethers.provider.getBlock('latest'))
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
         almostEqual(
