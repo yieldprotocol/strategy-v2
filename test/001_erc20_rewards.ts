@@ -78,7 +78,7 @@ describe('ERC20Rewards', async function () {
       .withArgs(user2, ZERO_ADDRESS, 1)
   })
 
-  it('sets a rewards token and schedule', async () => {
+  it('sets a rewards token and program', async () => {
     expect(await rewards.setRewards(governance.address, 1, 2, 3))
       .to.emit(rewards, 'RewardsSet')
       .withArgs(governance.address, 1, 2, 3)
@@ -90,7 +90,7 @@ describe('ERC20Rewards', async function () {
     expect((await rewards.rewardsPerToken()).rate).to.equal(3)
   })
 
-  describe('with a rewards schedule', async () => {
+  describe('with a rewards program', async () => {
     let snapshotId: string
     let timestamp: number
     let start: number
@@ -113,8 +113,15 @@ describe('ERC20Rewards', async function () {
       await governance.mint(rewards.address, WAD)
       await rewards.mint(user1, WAD) // So that total supply is not zero
     })
+  
 
-    describe('before the schedule', async () => {
+    describe('before the program', async () => {
+      it('allows to change the program', async () => {
+        expect(await rewards.setRewards(governance.address, 4, 5, 6))
+          .to.emit(rewards, 'RewardsSet')
+          .withArgs(governance.address, 4, 5, 6)
+      })
+
       it('doesn\'t update rewards per token', async () => {
         ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
@@ -128,7 +135,7 @@ describe('ERC20Rewards', async function () {
       })
     })
 
-    describe('during the schedule', async () => {
+    describe('during the program', async () => {
       beforeEach(async () => {
         snapshotId = await ethers.provider.send('evm_snapshot', [])
         await ethers.provider.send('evm_mine', [mid])
@@ -136,6 +143,11 @@ describe('ERC20Rewards', async function () {
 
       afterEach(async () => {
         await ethers.provider.send('evm_revert', [snapshotId])
+      })
+
+      it('doesn\'t allow to change the program', async () => {
+        await expect(rewards.setRewards(governance.address, 4, 5, 6))
+          .to.be.revertedWith('Ongoing rewards')
       })
 
       it('updates rewards per token on mint', async () => {
@@ -210,7 +222,7 @@ describe('ERC20Rewards', async function () {
       })
     })
 
-    describe('after the schedule', async () => {
+    describe('after the program', async () => {
       beforeEach(async () => {
         snapshotId = await ethers.provider.send('evm_snapshot', []);
         await ethers.provider.send('evm_mine', [end + 1000000])
@@ -218,6 +230,12 @@ describe('ERC20Rewards', async function () {
 
       afterEach(async () => {
         await ethers.provider.send('evm_revert', [snapshotId])
+      })
+
+      it('allows to change the program', async () => {
+        expect(await rewards.setRewards(governance.address, 4, 5, 6))
+          .to.emit(rewards, 'RewardsSet')
+          .withArgs(governance.address, 4, 5, 6)
       })
 
       it('doesn\'t update rewards per token past the end date', async () => {

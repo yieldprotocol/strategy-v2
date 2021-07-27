@@ -61,19 +61,6 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         ERC20Permit(name, symbol, decimals)
     { }
 
-
-    /// @dev Submit a series of calls for execution
-    /// @notice Allows batched call to self (this contract).
-    /// @param calls An array of inputs for each call.
-    function batch(bytes[] calldata calls) external payable returns(bytes[] memory results) {
-        results = new bytes[](calls.length);
-        for (uint256 i = 0; i < calls.length; i++) {
-            (bool success, bytes memory result) = address(this).delegatecall(calls[i]);
-            if (!success) revert(RevertMsgExtractor.getRevertMsg(result));
-            results[i] = result;
-        }
-    }
-
     /// @dev Return the earliest of two timestamps
     function earliest(uint32 x, uint32 y) internal pure returns (uint32 z) {
         z = (x < y) ? x : y;
@@ -89,8 +76,11 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         public
         auth
     {
-        // A new rewards program can be set once the current one is finished
-        require(block.timestamp.u32() >= rewardsPeriod.end, "Only after rewards period");
+        // A new rewards program can be set if one is not running
+        require(
+            block.timestamp.u32() < rewardsPeriod.start || block.timestamp.u32() > rewardsPeriod.end,
+            "Ongoing rewards"
+        );
 
         // If changed in a new rewards program, any unclaimed rewards from the last one will be served in the new token
         rewardsToken = rewardsToken_;
