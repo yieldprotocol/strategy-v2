@@ -12,12 +12,22 @@ contract ERC20RewardsMock is ERC20Rewards  {
     ) ERC20Rewards(name, symbol, decimals) { }
 
     /// @dev Give tokens to anyone.
-    function mint(address to, uint256 amount) public virtual {
+    function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
 
     /// @dev Burn tokens from anyone.
-    function burn(address from, uint256 amount) public virtual {
+    function burn(address from, uint256 amount) public {
         _burn(from, amount);
+    }
+
+    /// @dev Update the rewards per token accumulator.
+    function updateRewardsPerToken() public returns (uint128) {
+        return _updateRewardsPerToken();
+    }
+
+    /// @dev Accumulate rewards for an user.
+    function updateUserRewards(address user) public returns (uint128) {
+        return _updateUserRewards();
     }
 }
