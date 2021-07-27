@@ -206,25 +206,31 @@ describe('ERC20Rewards', async function () {
         
         expect(await governance.balanceOf(user1)).to.equal((await rewards.rewardsPerToken()).accumulated) // See previous test
         expect((await rewards.rewards(user1)).accumulated).to.equal(0)
-        console.log((await rewards.rewards(user1)).checkpoint)
-        console.log((await rewards.rewardsPerToken()).accumulated)
         expect((await rewards.rewards(user1)).checkpoint).to.equal((await rewards.rewardsPerToken()).accumulated)
       })
     })
 
-    /* describe('after the schedule', async () => {
+    describe('after the schedule', async () => {
       beforeEach(async () => {
         snapshotId = await ethers.provider.send('evm_snapshot', []);
-        await ethers.provider.send('evm_mine', [end + 10])
+        await ethers.provider.send('evm_mine', [end + 1000000])
       })
 
       afterEach(async () => {
         await ethers.provider.send('evm_revert', [snapshotId])
       })
 
-      it('calculates the claimable period', async () => {
-        expect(await rewards.claimablePeriod(user1)).to.equal(length)
+      it('doesn\'t update rewards per token past the end date', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        expect((await rewards.rewardsPerToken()).accumulated).to.equal(BigNumber.from(length).mul(rate)) // Total supply has been WAD for the whole program, but rewardsPerToken is scaled 1e18 up
       })
-    }) */
+
+      it('doesn\'t update user rewards', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        expect((await rewards.rewards(user1)).accumulated).to.equal(BigNumber.from(length).mul(rate)) // The guy got all the rewards == length * rate 
+      })
+    })
   })
 })
