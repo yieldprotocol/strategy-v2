@@ -29,9 +29,12 @@ describe('ERC20Rewards', async function () {
   let user1: string
   let user1Acc: SignerWithAddress
   let user2: string
+  let user2Acc: SignerWithAddress
 
   let governance: ERC20
   let rewards: ERC20Rewards
+
+  const ZERO_ADDRESS = '0x' + '0'.repeat(40)
 
   async function fixture() {} // For now we just use this to snapshot and revert the state of the blockchain
 
@@ -42,7 +45,8 @@ describe('ERC20Rewards', async function () {
     owner = ownerAcc.address
     user1Acc = signers[1]
     user1 = user1Acc.address
-    user2 = signers[2].address
+    user2Acc = signers[2]
+    user2 = user2Acc.address
   })
 
   after(async () => {
@@ -58,6 +62,20 @@ describe('ERC20Rewards', async function () {
     ])) as ERC20Rewards
 
     await rewards.grantRoles([id('setRewards(address,uint32,uint32,uint96)')], owner)
+  })
+
+  it('mints, transfers, burns', async () => {
+    expect(await rewards.mint(user1, 1))
+      .to.emit(rewards, 'Transfer')
+      .withArgs(ZERO_ADDRESS, user1, 1)
+
+    expect(await rewards.connect(user1Acc).transfer(user2, 1))
+      .to.emit(rewards, 'Transfer')
+      .withArgs(user1, user2, 1)
+
+    expect(await rewards.connect(user2Acc).burn(user2, 1))
+      .to.emit(rewards, 'Transfer')
+      .withArgs(user2, ZERO_ADDRESS, 1)
   })
 
   it('sets a rewards token and schedule', async () => {
@@ -96,11 +114,19 @@ describe('ERC20Rewards', async function () {
       await rewards.mint(user1, WAD) // So that total supply is not zero
     })
 
-    /* describe('before the schedule', async () => {
-      it('calculates the claimable period', async () => {
-        almostEqual(BigNumber.from(await rewards.claimablePeriod(user1)), BigNumber.from(0), BigNumber.from(10))
+    describe('before the schedule', async () => {
+      it('doesn\'t update rewards per token', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        expect((await rewards.rewardsPerToken()).accumulated).to.equal(0)
       })
-    }) */
+
+      it('doesn\'t update user rewards', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.mint(user1, WAD)
+        expect((await rewards.rewards(user1)).accumulated).to.equal(0)
+      })
+    })
 
     describe('during the schedule', async () => {
       beforeEach(async () => {
@@ -135,36 +161,55 @@ describe('ERC20Rewards', async function () {
         )
       })
 
-      /* it('minting doesn\'t change the claimable', async () => {
-        await rewards.mint(user2, WAD)
-        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
+      it('updates rewards per token on burn', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.burn(user1, WAD)
+        almostEqual(
+          (await rewards.rewardsPerToken()).accumulated,
+          BigNumber.from(timestamp - start).mul(rate), //  ... * 1e18 / totalSupply = ... * WAD / WAD
+          BigNumber.from(timestamp - start)
+            .mul(rate)
+            .div(100000)
+        )
       })
 
-      it('receiving doesn\'t increase the claimable', async () => {
+      it('updates user rewards on burn', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
+        await rewards.burn(user1, WAD)
+        const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
+        almostEqual(
+          (await rewards.rewards(user1)).accumulated,
+          rewardsPerToken, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
+          rewardsPerToken.div(100000)
+        )
+      })
+
+      it('updates user rewards on transfer', async () => {
+        ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.connect(user1Acc).transfer(user2, WAD)
-        const period = BigNumber.from(await rewards.claimablePeriod(user2))
-        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
-      })
-
-      it('supply increase doesn\'t change the claimable', async () => {
-        await rewards.mint(user2, WAD)
-        const period = BigNumber.from(await rewards.claimablePeriod(user1))
-        almostEqual(BigNumber.from(await rewards.claimableAmount(user1)), BigNumber.from(period), BigNumber.from(10))
+        const rewardsPerToken = (await rewards.rewardsPerToken()).accumulated
+        almostEqual(
+          (await rewards.rewards(user1)).accumulated,
+          rewardsPerToken, //  (... - paidRewardPerToken[user]) * userBalance / 1e18 = (... - 0) * WAD / WAD
+          rewardsPerToken.div(100000)
+        )
+        expect((await rewards.rewards(user2)).accumulated).to.equal(0)
+        expect(await rewards.connect(user2Acc).claim(user2))  // No time has passed, so user2 doesn't get to claim anything
+          .to.emit(rewards, 'Claimed')
+          .withArgs(user2, 0)
       })
 
       it('allows to claim', async () => {
-        let period = BigNumber.from(await rewards.claimablePeriod(user1))
         expect(await rewards.connect(user1Acc).claim(user1))
           .to.emit(rewards, 'Claimed')
           .withArgs(user1, await governance.balanceOf(user1))
         
-        // Claims an amount, in this case since rate is 1 the claimed amount is equal to the claimable period
-        almostEqual(BigNumber.from(await governance.balanceOf(user1)), BigNumber.from(period), BigNumber.from(10))
-
-        // After claiming, the claimable amount is deducted
-        period = BigNumber.from(await rewards.claimablePeriod(user1))
-        almostEqual(BigNumber.from(await rewards.claimableAmount(user2)), BigNumber.from(0), BigNumber.from(10))
-      }) */
+        expect(await governance.balanceOf(user1)).to.equal((await rewards.rewardsPerToken()).accumulated) // See previous test
+        expect((await rewards.rewards(user1)).accumulated).to.equal(0)
+        console.log((await rewards.rewards(user1)).checkpoint)
+        console.log((await rewards.rewardsPerToken()).accumulated)
+        expect((await rewards.rewards(user1)).checkpoint).to.equal((await rewards.rewardsPerToken()).accumulated)
+      })
     })
 
     /* describe('after the schedule', async () => {

@@ -11,8 +11,13 @@ contract ERC20RewardsMock is ERC20Rewards  {
         uint8 decimals
     ) ERC20Rewards(name, symbol, decimals) { }
 
-    /// @dev Give tokens to whoever asks for them.
+    /// @dev Give tokens to anyone.
     function mint(address to, uint256 amount) public virtual {
         _mint(to, amount);
+    }
+
+    /// @dev Burn tokens from anyone.
+    function burn(address from, uint256 amount) public virtual {
+        _burn(from, amount);
     }
 }

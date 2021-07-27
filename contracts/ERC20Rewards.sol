@@ -169,6 +169,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
 
     /// @dev Transfer tokens, after updating rewards for source and destination.
     function _transfer(address src, address dst, uint wad) internal virtual override returns (bool) {
+        _updateRewardsPerToken();
         _updateUserRewards(src);
         _updateUserRewards(dst);
         return super._transfer(src, dst, wad);
@@ -179,6 +180,7 @@ contract ERC20Rewards is AccessControl, ERC20Permit {
         external
         returns (uint256 claiming)
     {
+        _updateRewardsPerToken();
         claiming = _updateUserRewards(msg.sender);
         rewards[msg.sender].accumulated = 0; // A Claimed event implies the rewards were set to zero
         rewardsToken.transfer(to, claiming);
