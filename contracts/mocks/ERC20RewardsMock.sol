@@ -28,6 +28,6 @@ contract ERC20RewardsMock is ERC20Rewards  {
 
     /// @dev Accumulate rewards for an user.
     function updateUserRewards(address user) public returns (uint128) {
-        return _updateUserRewards();
+        return _updateUserRewards(user);
     }
 }

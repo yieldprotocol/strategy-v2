@@ -113,7 +113,6 @@ describe('ERC20Rewards', async function () {
       await governance.mint(rewards.address, WAD)
       await rewards.mint(user1, WAD) // So that total supply is not zero
     })
-  
 
     describe('before the program', async () => {
       it('allows to change the program', async () => {
@@ -122,13 +121,13 @@ describe('ERC20Rewards', async function () {
           .withArgs(governance.address, 4, 5, 6)
       })
 
-      it('doesn\'t update rewards per token', async () => {
+      it("doesn't update rewards per token", async () => {
         ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         expect((await rewards.rewardsPerToken()).accumulated).to.equal(0)
       })
 
-      it('doesn\'t update user rewards', async () => {
+      it("doesn't update user rewards", async () => {
         ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         expect((await rewards.rewards(user1)).accumulated).to.equal(0)
@@ -145,9 +144,8 @@ describe('ERC20Rewards', async function () {
         await ethers.provider.send('evm_revert', [snapshotId])
       })
 
-      it('doesn\'t allow to change the program', async () => {
-        await expect(rewards.setRewards(governance.address, 4, 5, 6))
-          .to.be.revertedWith('Ongoing rewards')
+      it("doesn't allow to change the program", async () => {
+        await expect(rewards.setRewards(governance.address, 4, 5, 6)).to.be.revertedWith('Ongoing rewards')
       })
 
       it('updates rewards per token on mint', async () => {
@@ -206,7 +204,7 @@ describe('ERC20Rewards', async function () {
           rewardsPerToken.div(100000)
         )
         expect((await rewards.rewards(user2)).accumulated).to.equal(0)
-        expect(await rewards.connect(user2Acc).claim(user2))  // No time has passed, so user2 doesn't get to claim anything
+        expect(await rewards.connect(user2Acc).claim(user2)) // No time has passed, so user2 doesn't get to claim anything
           .to.emit(rewards, 'Claimed')
           .withArgs(user2, 0)
       })
@@ -215,7 +213,7 @@ describe('ERC20Rewards', async function () {
         expect(await rewards.connect(user1Acc).claim(user1))
           .to.emit(rewards, 'Claimed')
           .withArgs(user1, await governance.balanceOf(user1))
-        
+
         expect(await governance.balanceOf(user1)).to.equal((await rewards.rewardsPerToken()).accumulated) // See previous test
         expect((await rewards.rewards(user1)).accumulated).to.equal(0)
         expect((await rewards.rewards(user1)).checkpoint).to.equal((await rewards.rewardsPerToken()).accumulated)
@@ -224,7 +222,7 @@ describe('ERC20Rewards', async function () {
 
     describe('after the program', async () => {
       beforeEach(async () => {
-        snapshotId = await ethers.provider.send('evm_snapshot', []);
+        snapshotId = await ethers.provider.send('evm_snapshot', [])
         await ethers.provider.send('evm_mine', [end + 1000000])
       })
 
@@ -238,16 +236,16 @@ describe('ERC20Rewards', async function () {
           .withArgs(governance.address, 4, 5, 6)
       })
 
-      it('doesn\'t update rewards per token past the end date', async () => {
+      it("doesn't update rewards per token past the end date", async () => {
         ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
         expect((await rewards.rewardsPerToken()).accumulated).to.equal(BigNumber.from(length).mul(rate)) // Total supply has been WAD for the whole program, but rewardsPerToken is scaled 1e18 up
       })
 
-      it('doesn\'t update user rewards', async () => {
+      it("doesn't update user rewards", async () => {
         ;({ timestamp } = await ethers.provider.getBlock('latest'))
         await rewards.mint(user1, WAD)
-        expect((await rewards.rewards(user1)).accumulated).to.equal(BigNumber.from(length).mul(rate)) // The guy got all the rewards == length * rate 
+        expect((await rewards.rewards(user1)).accumulated).to.equal(BigNumber.from(length).mul(rate)) // The guy got all the rewards == length * rate
       })
     })
   })
