@@ -88,9 +88,10 @@ contract Strategy is AccessControl, ERC20Rewards {
         ladle = ladle_;
         cauldron = ladle_.cauldron();
 
+        // This set of limits disables investing
         limits = Limits({
             low: 0,
-            mid: 1,
+            mid: 0,
             high: type(uint80).max
         });
     }
@@ -167,6 +168,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit LimitsSet(low_, mid_, high_);
     }
 
+    /// @dev Set a queue of pools to invest in, sequentially
+    /// @notice Until the last pool reaches maturity, this can't be changed
     function setPools(IPool[] memory pools_, bytes6[] memory seriesIds_) 
         public
         afterMaturity
@@ -196,10 +199,12 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Swap funds to the next pool
+    /// @notice If there is no next pool, all funds are divested, and investing disabled
     function swap()
         public
         afterMaturity
     {
+        // Divest from the current pool
         if (poolCounter == type(uint256).max) { // First pool in the set
             poolCounter = 0;
         } else {
@@ -214,6 +219,7 @@ contract Strategy is AccessControl, ERC20Rewards {
             poolCounter++;
         }
 
+        // Swap to the next pool
         if (poolCounter < pools.length) {   // We swap pool and vault, borrow and invest
             pool = pools[poolCounter];
             fyToken = pool.fyToken();
@@ -223,12 +229,18 @@ contract Strategy is AccessControl, ERC20Rewards {
             else ladle.tweak(vaultId, seriesId, baseId); // This will revert if the vault still has debt
 
             _borrowAndInvest(buffer - limits.mid, 0);
-        } else { // Last pool, we leave the funds in the buffer and clear state
+        } else { // There is no next pool, we leave the funds in the buffer and disable investing
             pool = IPool(address(0));
             fyToken = IFYToken(address(0));
             vaultId = bytes12(0);
 
             ladle.destroy(vaultId);
+
+            limits = Limits({
+                low: 0,
+                mid: 0,
+                high: type(uint80).max
+            });
         }
         emit PoolSwapped(address(pool));
     }
@@ -248,11 +260,12 @@ contract Strategy is AccessControl, ERC20Rewards {
     {
         //  - Can we use 1 fyToken = 1 base for this purpose? It overvalues the value of the strategy.
         //  - If so lpTokens/lpSupply * (lpReserves + lpFYReserves) + unallocated = value_in_token(strategy)
-        value = 
+        if (pool == IPool(address(0))) value =
             (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool))
              * pool.balanceOf(address(this))) / pool.totalSupply()
              + buffer
              + fyToken.balanceOf(address(this));
+        else value = buffer;
     }
 
     /// @dev Mint strategy tokens. Invests if the available funds end above levels.
