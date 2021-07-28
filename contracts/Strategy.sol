@@ -49,8 +49,8 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
     event PoolSwapped(address pool);
-    event Invest(uint256 minted, uint256 buffer);
-    event Divest(uint256 burnt, uint256 buffer);
+    event Invest(uint256 minted);
+    event Divest(uint256 burnt);
 
     struct Limits {                              // Buffer limits, in 1e18 units
         uint80 low;                              // If the buffer would drop below this level, it fills to mid 
@@ -215,7 +215,7 @@ contract Strategy is AccessControl, ERC20Rewards {
             // Redeem any fyToken surplus
             uint256 toRedeem = fyToken.balanceOf(address(this));
             fyToken.transfer(address(fyToken), toRedeem);
-            buffer += fyToken.redeem(address(this), toRedeem);
+            fyToken.redeem(address(this), toRedeem);
             poolCounter++;
         }
 
@@ -242,6 +242,7 @@ contract Strategy is AccessControl, ERC20Rewards {
                 high: type(uint80).max
             });
         }
+        buffer = base.balanceOf(address(this));
         emit PoolSwapped(address(pool));
     }
 
@@ -282,10 +283,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         minted = _totalSupply - deposit / _strategyValue();
         
         // Invest if the deposit would lead to `buffer` over `limits.high`
-        if (buffer + deposit > limits.high) {
-            _drainBuffer(deposit, 0); // TODO: Set slippage as a twap
-        }
-        buffer += deposit;
+        if (buffer + deposit > limits.high) _drainBuffer(deposit, 0); // TODO: Set slippage as a twap
 
         _mint(to, minted);
     }
@@ -303,10 +301,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         withdrawal = _strategyValue() * toBurn / _totalSupply;
 
         // Divest if the withdrawal would lead to `buffer` below `limits.low`
-        if (withdrawal > buffer || buffer - withdrawal < limits.low) {
-            _fillBuffer(withdrawal, 0, 0); // TODO: Set slippage as a twap
-        }
-        buffer -= withdrawal;
+        if (withdrawal > buffer || buffer - withdrawal < limits.low) _fillBuffer(withdrawal, 0, 0); // TODO: Set slippage as a twap
+
         _burn(address(this), toBurn);
         base.transfer(to, withdrawal);
     }
@@ -325,6 +321,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 toInvest = deposit + buffer - limits.mid;
         // Borrow and invest
         tokenInvested = _borrowAndInvest(toInvest, min);
+
+        buffer = base.balanceOf(address(this));
     }
 
     /// @dev Fill the available funds buffer to the mid point, after an hypothetical withdrawal
@@ -344,6 +342,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 toDivest = (1e18 * toObtain) / lpValueUp;   // It doesn't matter if the amount to divest is off by some wei
         // Divest and repay
         (tokenDivested, fyTokenDivested) = _divestAndRepay(toDivest, minTokenReceived, minFYTokenReceived);
+
+        buffer = base.balanceOf(address(this));
     }
 
     /// @dev Invest available funds from the strategy into YieldSpace LP - Borrow and mint
@@ -351,8 +351,6 @@ contract Strategy is AccessControl, ERC20Rewards {
         internal
         returns (uint256 minted)
     {
-        buffer -= tokenInvested;
-
         // Find pool proportion p = fyTokenReserves/tokenReserves
         // Deposit (investment * p) base to borrow (investment * p) fyToken
         //   (investment * p) fyToken + (investment * (1 - p)) base = investment
@@ -370,7 +368,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         base.transfer(address(pool), tokenToPool);
         (,, minted) = pool.mint(address(this), true, min);          // Calculate from unaccounted base amount in pool, which was rounded down. Surplus is in base token, which was rounded up
 
-        emit Invest(minted, buffer - tokenInvested);
+        emit Invest(minted);
     }
 
     /// @dev Divest from YieldSpace LP into available funds for the strategy - Burn and repay
@@ -392,8 +390,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         ladle.pour(vaultId, address(this), toRepay_, toRepay_);
 
         // Any surplus fyToken remains in the contract, locked until there is debt and a divestment event.
-        buffer += tokenDivested + toRepay;  
 
-        emit Divest(lpBurnt, buffer + tokenDivested + toRepay);
+        emit Divest(lpBurnt);
     }
 }
