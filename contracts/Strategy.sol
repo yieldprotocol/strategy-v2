@@ -74,12 +74,8 @@ contract Strategy is AccessControl, ERC20Rewards {
     bytes6[] public seriesIds;                   // SeriesId for each pool in the pools array
     uint256 public poolCounter;                  // Index of the current pool in the pools array
 
-    constructor(ILadle ladle_, IERC20 base_, bytes6 baseId_)
-        ERC20Rewards(
-            "Yield LP Strategy",
-            "fyLPSTRAT",
-            18
-        )
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+        ERC20Rewards(name, symbol, decimals)
     { 
         require(
             ladle_.cauldron().assets(baseId_) == address(base_),
