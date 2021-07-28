@@ -329,7 +329,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 toObtain = limits.mid + withdrawal - buffer;
         // Find value of lp tokens in base terms, scaled up for precision
         uint256 lpValueUp = (1e18 * (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))) / pool.totalSupply();
-        uint256 toDivest = (1e18 * toObtain) / lpValueUp;
+        uint256 toDivest = (1e18 * toObtain) / lpValueUp;   // It doesn't matter if the amount to divest is off by some wei
         // Divest and repay
         (tokenDivested, fyTokenDivested) = _divestAndRepay(toDivest, minTokenReceived, minFYTokenReceived);
     }
@@ -347,8 +347,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         //   (investment * p) fyToken + (investment * (1 - p)) base = investment
         //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
         //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-        uint256 fyTokenToPool = tokenInvested * proportion / 1e18;
-        uint256 tokenToPool = tokenInvested - fyTokenToPool;
+        uint256 fyTokenToPool = tokenInvested * proportion / 1e18;  // Rounds down
+        uint256 tokenToPool = tokenInvested - fyTokenToPool;        // tokenToPool is rounded up
 
         base.transfer(baseJoin, fyTokenToPool);
         int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
@@ -356,7 +356,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.transfer(address(pool), tokenToPool);
-        (,, minted) = pool.mint(address(this), true, min);
+        (,, minted) = pool.mint(address(this), false, min);          // Calculate from unaccounted fyToken amount in pool, which was rounded down. Surplus is in base token, which was rounded up
 
         emit Invest(minted, buffer - tokenInvested);
     }
