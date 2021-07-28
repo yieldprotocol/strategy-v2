@@ -48,7 +48,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenJoinReset(address join);
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
-    event PoolSwapped(address pool, bytes6 seriesId);
+    event PoolSwapped(address pool);
     event Invest(uint256 minted, uint256 buffer);
     event Divest(uint256 burnt, uint256 buffer);
 
@@ -63,11 +63,16 @@ contract Strategy is AccessControl, ERC20Rewards {
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
-    Limits public limits;                        // Limits for unallocated funds
-    IPool public pool;                           // Pool that this strategy invests in
-    IFYToken public fyToken;                     // Current fyToken for this strategy
-    uint256 public buffer;                       // Unallocated base token in this strategy
     bytes12 public vaultId;                      // Vault used to borrow fyToken
+
+    Limits public limits;                        // Limits for unallocated funds
+    uint256 public buffer;                       // Unallocated base token in this strategy
+
+    IPool public pool;                           // Current pool that this strategy invests in
+    IFYToken public fyToken;                     // Current fyToken for this strategy
+    IPool[] public pools;                        // Pools that this strategy invests in, past, present and future
+    bytes6[] public seriesIds;                   // SeriesId for each pool in the pools array
+    uint256 public poolCounter;                  // Index of the current pool in the pools array
 
     constructor(ILadle ladle_, IERC20 base_, bytes6 baseId_)
         ERC20Rewards(
@@ -166,6 +171,24 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit LimitsSet(low_, mid_, high_);
     }
 
+    function setPools(IPool[] memory pools_, bytes6[] memory seriesIds_) 
+        public
+        afterMaturity
+        auth
+    {
+        require (pools.length == 0 || poolCounter == pools.length - 1, "Pools queued");
+        for (uint256 p = 0; p < pools_.length; p++) {
+            DataTypes.Series memory series = cauldron.series(seriesIds_[p]);
+            require(
+                series.fyToken == pools_[p].fyToken(),
+                "Mismatched seriesId"
+            );
+        }
+        pools = pools_;
+        seriesIds = seriesIds_;
+        poolCounter = type(uint256).max;
+    }
+
     /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
     /// @notice The funds for initialization must have been sent previously, using a batchable router.
     function init(address to)
@@ -176,44 +199,42 @@ contract Strategy is AccessControl, ERC20Rewards {
         _mint(to, base.balanceOf(address(this)));
     }
 
-    /// @dev Swap funds to a new pool (auth)
-    /// TODO: Set an array of upcoming pools, and swap to the next one in the array
-    /// TODO: Add an option to divest fully, redeem all, and not invest in a new pool
-    function swap(IPool pool_, bytes6 seriesId_)
+    /// @dev Swap funds to the next pool
+    function swap()
         public
         afterMaturity
-        auth
     {
-        require (
-            fyToken.maturity() >= uint32(block.timestamp),
-            "Only after maturity"
-        );
+        if (poolCounter == type(uint256).max) { // First pool in the set
+            poolCounter = 0;
+        } else {
+            // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
+            // With a bit of extra code, the collateral could be left in the vault
+            _divestAndRepay(pool.balanceOf(address(this)), 0, 0);
 
-        // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
-        // With a bit of extra code, the collateral could be left in the vault
-        _divestAndRepay(pool.balanceOf(address(this)), 0, 0);
+            // Redeem any fyToken surplus
+            uint256 toRedeem = fyToken.balanceOf(address(this));
+            fyToken.transfer(address(fyToken), toRedeem);
+            buffer += fyToken.redeem(address(this), toRedeem);
+            poolCounter++;
+        }
 
-        // Redeem any fyToken surplus
-        uint256 toRedeem = fyToken.balanceOf(address(this));
-        fyToken.transfer(address(fyToken), toRedeem);
-        buffer += fyToken.redeem(address(this), toRedeem);
+        if (poolCounter < pools.length) {   // We swap pool and vault, borrow and invest
+            pool = pools[poolCounter];
+            fyToken = pool.fyToken();
+            bytes6 seriesId = seriesIds[poolCounter];
 
-        // Swap the series (fyToken and pool). 
-        DataTypes.Series memory series = cauldron.series(seriesId_);
-        require(
-            series.fyToken == pool_.fyToken(),
-            "Mismatched seriesId"
-        );
+            if (vaultId == bytes12(0)) (vaultId, ) = ladle.build(seriesId, baseId, 0);
+            else ladle.tweak(vaultId, seriesId, baseId); // This will revert if the vault still has debt
 
-        // Replace the vault, the pool and the fyToken
-        if (vaultId == bytes12(0)) (vaultId, ) = ladle.build(seriesId_, baseId, 0);
-        else ladle.tweak(vaultId, seriesId_, baseId); // This will revert if the vault still has debt
-        pool = pool_;
-        fyToken = pool_.fyToken();
+            _borrowAndInvest(buffer - limits.mid, 0);
+        } else { // Last pool, we leave the funds in the buffer and clear state
+            pool = IPool(address(0));
+            fyToken = IFYToken(address(0));
+            vaultId = bytes12(0);
 
-        // Invest, leaving the buffer amount
-        _borrowAndInvest(buffer - limits.mid, 0);
-        emit PoolSwapped(address(pool_), seriesId_);
+            ladle.destroy(vaultId);
+        }
+        emit PoolSwapped(address(pool));
     }
 
     /// @dev Value of the strategy in base token terms
