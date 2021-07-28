@@ -281,24 +281,6 @@ contract Strategy is AccessControl, ERC20Rewards {
         base.transfer(to, withdrawal);
     }
 
-    /// @dev Drain the available funds buffer to the mid point
-    function drainBuffer(uint256 min)
-        public
-        auth
-        returns (uint256 tokenInvested)
-    {
-        tokenInvested = _drainBuffer(0, min);
-    }
-
-    /// @dev Fill the available funds buffer to the mid point
-    function fillBuffer(uint256 minTokenReceived, uint256 minFYTokenReceived)
-        public
-        auth
-        returns (uint256 tokenDivested, uint256 fyTokenDivested)
-    {
-        (tokenDivested, fyTokenDivested) = _fillBuffer(0, minTokenReceived, minFYTokenReceived);
-    }
-
     /// @dev Drain the available funds buffer, after an hypothetical deposit
     function _drainBuffer(uint256 deposit, uint256 min)
         internal
@@ -342,13 +324,13 @@ contract Strategy is AccessControl, ERC20Rewards {
         buffer -= tokenInvested;
 
         // Find pool proportion p = fyTokenReserves/tokenReserves
-        uint256 proportion = 1e18 * fyToken.balanceOf(address(pool)) / base.balanceOf(address(pool));
         // Deposit (investment * p) base to borrow (investment * p) fyToken
         //   (investment * p) fyToken + (investment * (1 - p)) base = investment
         //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
         //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-        uint256 fyTokenToPool = tokenInvested * proportion / 1e18;  // Rounds down
-        uint256 tokenToPool = tokenInvested - fyTokenToPool;        // tokenToPool is rounded up
+        // The minimum invested amount will be buffer.high - buffer.mid
+        uint256 tokenToPool = tokenInvested * base.balanceOf(address(pool)) / fyToken.balanceOf(address(pool));  // Rounds down
+        uint256 fyTokenToPool = tokenInvested - tokenToPool;        // fyTokenToPool is rounded up
 
         base.transfer(baseJoin, fyTokenToPool);
         int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
@@ -356,7 +338,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.transfer(address(pool), tokenToPool);
-        (,, minted) = pool.mint(address(this), false, min);          // Calculate from unaccounted fyToken amount in pool, which was rounded down. Surplus is in base token, which was rounded up
+        (,, minted) = pool.mint(address(this), true, min);          // Calculate from unaccounted base amount in pool, which was rounded down. Surplus is in base token, which was rounded up
 
         emit Invest(minted, buffer - tokenInvested);
     }
