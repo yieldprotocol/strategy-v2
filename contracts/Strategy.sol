@@ -166,9 +166,17 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit LimitsSet(low_, mid_, high_);
     }
 
+    /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
+    /// @notice The funds for initialization must have been sent previously, using a batchable router.
+    function init(address to)
+        public
+        auth
+    {
+        require (_totalSupply == 0, "Already initialized");
+        _mint(to, base.balanceOf(address(this)));
+    }
+
     /// @dev Swap funds to a new pool (auth)
-    /// @notice First the strategy must be fully divested from the old pool.
-    /// @notice First the strategy must repaid all debts from the old series.
     /// TODO: Set an array of upcoming pools, and swap to the next one in the array
     /// TODO: Add an option to divest fully, redeem all, and not invest in a new pool
     function swap(IPool pool_, bytes6 seriesId_)
@@ -230,7 +238,8 @@ contract Strategy is AccessControl, ERC20Rewards {
              + fyToken.balanceOf(address(this));
     }
 
-    /// @dev Mint strategy tokens. The underlying tokens that the user contributes need to have been transferred previously.
+    /// @dev Mint strategy tokens. Invests if the available funds end above levels.
+    /// @notice The underlying tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to)
         public
         beforeMaturity
@@ -251,7 +260,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw funds. Replenish the available funds limits if below levels
+    /// @dev Burn strategy tokens to withdraw funds. Divests if the available funds would end below levels
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address to)
         public
         returns (uint256 withdrawal)
