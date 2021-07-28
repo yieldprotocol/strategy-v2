@@ -49,6 +49,8 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
     event PoolSwapped(address pool, bytes6 seriesId);
+    event Invest(uint256 minted, uint256 buffer);
+    event Divest(uint256 burnt, uint256 buffer);
 
     struct Limits {                              // Buffer limits, in 1e18 units
         uint80 low;                              // If the buffer would drop below this level, it fills to mid 
@@ -345,6 +347,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.transfer(address(pool), tokenToPool);
         (,, minted) = pool.mint(address(this), true, min);
+
+        emit Invest(minted, buffer - tokenInvested);
     }
 
     /// @dev Divest from YieldSpace LP into available funds for the strategy - Burn and repay
@@ -359,13 +363,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Repay with fyToken as much as possible
         uint256 debt = cauldron.balances(vaultId).art;
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
+        toRepay += fyToken.balanceOf(address(this));    // If there is a surplus from a previous divestment event, use it.
         
         fyToken.transfer(address(fyToken), toRepay);
         int128 toRepay_ = toRepay.u128().i128();
         ladle.pour(vaultId, address(this), toRepay_, toRepay_);
 
-        // Any surplus fyToken remains in the contract, locked until the pool is swapped.
+        // Any surplus fyToken remains in the contract, locked until there is debt and a divestment event.
+        buffer += tokenDivested + toRepay;  
 
-        buffer += tokenDivested;  
+        emit Divest(lpBurnt, buffer + tokenDivested + toRepay);
     }
 }
