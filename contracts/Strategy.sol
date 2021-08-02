@@ -213,7 +213,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         afterMaturity
         auth
     {
-        require (pools.length == 0 || poolCounter == pools.length - 1, "Pools queued");
+        require (pools.length == 0 || poolCounter == pools.length - 1, "Pools still queued");
         for (uint256 p = 0; p < pools_.length; p++) {
             DataTypes.Series memory series = cauldron.series(seriesIds_[p]);
             require(
@@ -280,7 +280,8 @@ contract Strategy is AccessControl, ERC20Rewards {
                 timestamp: uint32(block.timestamp)
             });
 
-            _borrowAndInvest(buffer - limits.mid);
+            // Invest if there is enough in the buffer
+            if (base.balanceOf(address(this)) > limits.high) _borrowAndInvest(buffer - limits.mid);
         } else { // There is no next pool, we leave the funds in the buffer and disable investing
             pool = IPool(address(0));
             fyToken = IFYToken(address(0));

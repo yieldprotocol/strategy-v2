@@ -88,7 +88,8 @@ describe('Strategy', async function () {
 
     await strategy.grantRoles([
       id('init(address)'),
-      id('setPools(address[],bytes6[])')
+      id('setPools(address[],bytes6[])'),
+      id('swap()'),
     ], owner)
   })
 
@@ -132,6 +133,40 @@ describe('Strategy', async function () {
       expect(await strategy.pools(1)).to.equal(pool2.address)
       expect(await strategy.seriesIds(0)).to.equal(series1Id)
       expect(await strategy.seriesIds(1)).to.equal(series2Id)
+    })
+
+    describe('with a pool queue set', async () => {
+      beforeEach(async () => {
+        await strategy.setPools(
+          [pool1.address, pool2.address],
+          [series1Id, series2Id],
+        )
+      })
+
+      it('can\'t set a new pool queue until done', async () => {
+        await expect(strategy.setPools(
+          [pool1.address, pool2.address],
+          [series1Id, series1Id],
+        ))
+          .to.be.revertedWith('Pools still queued')
+      })
+
+      it('swaps to the first pool', async () => {
+        await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped')
+  
+        expect(await strategy.poolCounter()).to.equal(0)
+        expect(await strategy.pool()).to.equal(pool1.address)
+        expect(await strategy.fyToken()).to.equal(fyToken1.address)
+
+        const vaultId = await strategy.vaultId()
+        const [vaultOwner, vaultSeriesId] = await vault.vaults(vaultId)
+        expect(vaultOwner).to.equal(strategy.address)
+        expect(vaultSeriesId).to.equal(series1Id)
+
+        const poolCache = await strategy.poolCache()
+        expect(poolCache.base).to.equal(await pool1.baseCached())
+        expect(poolCache.fyToken).to.equal(await pool1.fyTokenCached())
+      })
     })
   })
 })

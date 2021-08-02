@@ -51,6 +51,10 @@ contract PoolMock is ERC20, Ownable() {
     uint112 public baseReserves;
     uint112 public fyTokenReserves;
 
+    uint112 public baseCached;
+    uint112 public fyTokenCached;
+    uint32 public lastCached;
+
     constructor(IERC20 base_, IFYToken fyToken_) ERC20("Pool", "Pool", 18) {
         base = base_;
         fyToken = fyToken_;
@@ -60,9 +64,14 @@ contract PoolMock is ERC20, Ownable() {
         (baseReserves, fyTokenReserves) = (uint112(base.balanceOf(address(this))), uint112(fyToken.balanceOf(address(this))));
     }
 
-    function update(uint112 baseReserves_, uint112 fyTokenReserves_) public {
-        baseReserves = baseReserves_;
-        fyTokenReserves = fyTokenReserves_;
+    function update() public {
+        baseCached = baseReserves;
+        fyTokenCached = fyTokenReserves;
+        lastCached = uint32(block.timestamp);
+    }
+
+    function getCache() public view returns (uint112, uint112, uint32) {
+        return (baseCached, fyTokenCached, lastCached);
     }
 
     function getBaseReserves() public view returns(uint128) {
@@ -112,6 +121,8 @@ contract PoolMock is ERC20, Ownable() {
         
         _mint(to, tokensMinted);
 
+        update();
+
         emit Liquidity(0, msg.sender, to, -int256(baseIn), -int256(fyTokenIn), int256(tokensMinted));
     }
 
@@ -140,6 +151,8 @@ contract PoolMock is ERC20, Ownable() {
         base.transfer(to, baseOut);
         fyToken.transfer(to, fyTokenOut);
 
+        update();
+
         emit Liquidity(0, msg.sender, to, int256(baseOut), int256(fyTokenOut), -int(tokensBurned));
     }
 
@@ -151,6 +164,9 @@ contract PoolMock is ERC20, Ownable() {
         uint256 baseBought = sellFYToken(to, 0);
         require (baseFromBurn + baseBought >= minBaseOut, "Pool: Not enough base tokens obtained");
         base.transfer(to, baseFromBurn);
+
+        update();
+
         return (tokensBurned_, baseFromBurn + baseBought);
     }
 
@@ -176,6 +192,9 @@ contract PoolMock is ERC20, Ownable() {
         require(fyTokenOut >= min, "Pool: Not enough fyToken obtained");
         fyToken.transfer(to, fyTokenOut);
         (baseReserves, fyTokenReserves) = (uint112(base.balanceOf(address(this))), uint112(fyTokenReserves - fyTokenOut));
+
+        update();
+
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, int128(baseIn), -int128(fyTokenOut));
         return fyTokenOut;
     }
@@ -186,6 +205,9 @@ contract PoolMock is ERC20, Ownable() {
         require(fyTokenReserves + fyTokenIn <= getFYTokenReserves(), "Pool: Not enough fyToken in");
         base.transfer(to, baseOut);
         (baseReserves, fyTokenReserves) = (uint112(baseReserves - baseOut), uint112(fyTokenReserves + fyTokenIn));
+
+        update();
+
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, -int128(baseOut), int128(fyTokenIn));
         return fyTokenIn;
     }
@@ -196,6 +218,9 @@ contract PoolMock is ERC20, Ownable() {
         require(baseOut >= min, "Pool: Not enough base obtained");
         base.transfer(to, baseOut);
         (baseReserves, fyTokenReserves) = (uint112(baseReserves - baseOut), uint112(fyToken.balanceOf(address(this))));
+
+        update();
+
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, -int128(baseOut), int128(fyTokenIn));
         return baseOut;
     }
@@ -206,6 +231,9 @@ contract PoolMock is ERC20, Ownable() {
         require(baseReserves + baseIn <= getBaseReserves(), "Pool: Not enough base token in");
         fyToken.transfer(to, fyTokenOut);
         (baseReserves, fyTokenReserves) = (uint112(baseReserves + baseIn), uint112(fyTokenReserves - fyTokenOut));
+
+        update();
+
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, int128(baseIn), -int128(fyTokenOut));
         return baseIn;
     }
