@@ -7,6 +7,7 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 // import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "./ERC20Rewards.sol";
+import "hardhat/console.sol";
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
@@ -118,6 +119,9 @@ contract Strategy is AccessControl, ERC20Rewards {
             mid: 0,
             high: type(uint80).max
         });
+
+        // This deviation rate allows a 100% deviation per second, basically disabling it
+        poolDeviationRate = 1e18;
     }
 
     modifier beforeMaturity() {
