@@ -42,7 +42,7 @@ contract VaultMock is ICauldron, ILadle {
     mapping (bytes12 => DataTypes.Balances) public balances;
 
     uint96 public lastVaultId;
-    uint48 public lastSeriesId;
+    uint48 public nextSeriesId;
 
     constructor() {
         cauldron = ICauldron(address(this));
@@ -58,13 +58,13 @@ contract VaultMock is ICauldron, ILadle {
 
     function addSeries() external returns (bytes6) {
         IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, 0)));
-        series[bytes6(lastSeriesId++)] = DataTypes.Series({
+        series[bytes6(nextSeriesId++)] = DataTypes.Series({
             fyToken: fyToken,
             maturity: 0,
             baseId: baseId
         });
 
-        return bytes6(lastSeriesId);
+        return bytes6(nextSeriesId - 1);
     }
 
     function build(bytes6 seriesId, bytes6 ilkId, uint8) external override returns (bytes12 vaultId, DataTypes.Vault memory vault) {
@@ -74,7 +74,7 @@ contract VaultMock is ICauldron, ILadle {
             ilkId: ilkId
         });
 
-        return (bytes12(lastVaultId), vaults[bytes12(lastVaultId)]);
+        return (bytes12(lastVaultId - 1), vaults[bytes12(lastVaultId - 1)]);
     }
 
     function destroy(bytes12 vaultId) external override {

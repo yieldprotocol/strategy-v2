@@ -46,8 +46,8 @@ describe('Strategy', async function () {
   let pool2: PoolMock
 
   let baseId: string
-  let fyToken1Id: string
-  let fyToken2Id: string
+  let series1Id: string
+  let series2Id: string
 
   const ZERO_ADDRESS = '0x' + '0'.repeat(40)
 
@@ -73,12 +73,12 @@ describe('Strategy', async function () {
     vault = (await deployContract(ownerAcc, VaultMockArtifact, [])) as VaultMock
     base = await ethers.getContractAt('ERC20Mock', await vault.base(), ownerAcc) as unknown as ERC20Mock
     baseId = await vault.baseId()
-    fyToken1Id = await vault.callStatic.addSeries()
+    series1Id = await vault.callStatic.addSeries()
     await vault.addSeries()
-    fyToken1 = await ethers.getContractAt('FYTokenMock', (await vault.series(fyToken1Id)).fyToken, ownerAcc) as unknown as FYTokenMock
-    fyToken2Id = await vault.callStatic.addSeries()
+    fyToken1 = await ethers.getContractAt('FYTokenMock', (await vault.series(series1Id)).fyToken, ownerAcc) as unknown as FYTokenMock
+    series2Id = await vault.callStatic.addSeries()
     await vault.addSeries()
-    fyToken2 = await ethers.getContractAt('FYTokenMock', (await vault.series(fyToken2Id)).fyToken, ownerAcc) as unknown as FYTokenMock
+    fyToken2 = await ethers.getContractAt('FYTokenMock', (await vault.series(series2Id)).fyToken, ownerAcc) as unknown as FYTokenMock
 
     // Set up YieldSpace
     pool1 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken1.address])) as PoolMock
@@ -86,7 +86,10 @@ describe('Strategy', async function () {
 
     strategy = (await deployContract(ownerAcc, StrategyArtifact, ['Strategy Token', 'STR', 18, vault.address, base.address, baseId])) as Strategy
 
-    await strategy.grantRole(id('init(address)'), owner)
+    await strategy.grantRoles([
+      id('init(address)'),
+      id('setPools(address[],bytes6[])')
+    ], owner)
   })
 
   it('sets up testing environment', async () => {})
@@ -96,5 +99,39 @@ describe('Strategy', async function () {
     await expect(strategy.init(user1))
       .to.emit(strategy, 'Transfer')
     expect(await strategy.balanceOf(user1)).to.equal(WAD)
+  })
+
+  describe('once initialized', async () => {
+    beforeEach(async () => {
+      await base.mint(strategy.address, WAD)
+      await strategy.init(owner)
+    })
+
+    it('can\'t initialize again', async () => {
+      await base.mint(strategy.address, WAD)
+      await expect(strategy.init(user1))
+        .to.be.revertedWith('Already initialized')
+    })
+
+    it('can\'t set pools with mismatched seriesId', async () => {
+      await expect(strategy.setPools(
+        [pool1.address, pool2.address],
+        [series1Id, series1Id],
+      ))
+        .to.be.revertedWith('Mismatched seriesId')
+    })
+
+    it('sets a pool queue', async () => {
+      await expect(strategy.setPools(
+        [pool1.address, pool2.address],
+        [series1Id, series2Id],
+      )).to.emit(strategy, 'PoolsSet')
+
+      expect(await strategy.poolCounter()).to.equal(MAX)
+      expect(await strategy.pools(0)).to.equal(pool1.address)
+      expect(await strategy.pools(1)).to.equal(pool2.address)
+      expect(await strategy.seriesIds(0)).to.equal(series1Id)
+      expect(await strategy.seriesIds(1)).to.equal(series2Id)
+    })
   })
 })

@@ -65,6 +65,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
     event PoolDeviationRateSet(uint256 poolDeviationRate);
+    event PoolsSet(IPool[] indexed pools, bytes6[] indexed seriesIds);
     event PoolSwapped(address pool);
     event Invest(uint256 minted);
     event Divest(uint256 burnt);
@@ -223,6 +224,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         pools = pools_;
         seriesIds = seriesIds_;
         poolCounter = type(uint256).max;
+
+        emit PoolsSet(pools_, seriesIds_);
     }
 
     /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
