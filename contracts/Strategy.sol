@@ -127,7 +127,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     modifier beforeMaturity() {
         require (
-            fyToken.maturity() < uint32(block.timestamp),
+            fyToken.maturity() >= uint32(block.timestamp),
             "Only before maturity"
         );
         _;
@@ -241,7 +241,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Swap funds to the next pool
     /// @notice If there is no next pool, all funds are divested, and investing disabled
-    /// @notice This function is permissioned to avoid sandwiching
+    /// @notice This function is permissioned to avoid sandwiching on investing
     function swap()
         public
         auth
