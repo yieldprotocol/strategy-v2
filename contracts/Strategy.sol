@@ -235,7 +235,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         auth
     {
         require (_totalSupply == 0, "Already initialized");
-        _mint(to, base.balanceOf(address(this)));
+        buffer = base.balanceOf(address(this));
+        _mint(to, buffer);
     }
 
     /// @dev Swap funds to the next pool
@@ -308,17 +309,18 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Value of the strategy in base token terms
+    /// @notice LP tokens and fyToken are only counted towards the strategy value for the current pool
     function _strategyValue()
         internal view
         returns (uint256 value)
     {
         //  - Can we use 1 fyToken = 1 base for this purpose? It overvalues the value of the strategy.
         //  - If so lpTokens/lpSupply * (lpReserves + lpFYReserves) + unallocated = value_in_token(strategy)
-        if (pool == IPool(address(0))) value =
-            (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool))
+        if (pool != IPool(address(0))) value =
+            ((base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))
              * pool.balanceOf(address(this))) / pool.totalSupply()
-             + buffer
-             + fyToken.balanceOf(address(this));
+             + fyToken.balanceOf(address(this))
+             + buffer;
         else value = buffer;
     }
 
@@ -337,6 +339,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Invest if the deposit would lead to `buffer` over `limits.high`
         if (buffer + deposit > limits.high) _drainBuffer(deposit);
+        else buffer += deposit;
 
         _mint(to, minted);
     }
@@ -355,6 +358,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Divest if the withdrawal would lead to `buffer` below `limits.low`
         if (withdrawal > buffer || buffer - withdrawal < limits.low) _fillBuffer(withdrawal);
+        else buffer -= withdrawal;
 
         _burn(address(this), toBurn);
         base.transfer(to, withdrawal);

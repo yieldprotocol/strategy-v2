@@ -83,6 +83,14 @@ describe('Strategy', async function () {
     // Set up YieldSpace
     pool1 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken1.address])) as PoolMock
     pool2 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken2.address])) as PoolMock
+    await base.mint(pool1.address, WAD.mul(1000000))
+    await base.mint(pool2.address, WAD.mul(1000000))
+    await fyToken1.mint(pool1.address, WAD.mul(100000))
+    await fyToken2.mint(pool2.address, WAD.mul(100000))
+    await pool1.mint(owner, true, 0)
+    await pool2.mint(owner, true, 0)
+    await pool1.sync()
+    await pool2.sync()
 
     strategy = (await deployContract(ownerAcc, StrategyArtifact, ['Strategy Token', 'STR', 18, vault.address, base.address, baseId])) as Strategy
 
@@ -112,6 +120,12 @@ describe('Strategy', async function () {
       await base.mint(strategy.address, WAD)
       await expect(strategy.init(user1))
         .to.be.revertedWith('Already initialized')
+    })
+
+    it('the strategy value is the buffer value', async () => {
+      await fyToken1.mint(strategy.address, WAD) // <-- This should be ignored
+      expect(await strategy.strategyValue())
+        .to.equal(WAD)
     })
 
     it('can\'t set pools with mismatched seriesId', async () => {
@@ -166,6 +180,27 @@ describe('Strategy', async function () {
         const poolCache = await strategy.poolCache()
         expect(poolCache.base).to.equal(await pool1.baseCached())
         expect(poolCache.fyToken).to.equal(await pool1.fyTokenCached())
+      })
+
+      describe('with an active pool', async () => {
+        beforeEach(async () => {
+          await strategy.swap()
+        })
+
+        it('fyToken are counted towards the strategy value', async () => {
+          await fyToken1.mint(strategy.address, WAD)
+          expect(await strategy.strategyValue())
+            .to.equal(WAD.mul(2))
+        })
+
+        it('LP tokens are counted towards the strategy value', async () => {
+          await pool1.transfer(strategy.address, WAD)
+          expect(await strategy.strategyValue())
+            .to.equal(WAD.add(
+              ((await base.balanceOf(pool1.address)).add(await fyToken1.balanceOf(pool1.address)))
+                .mul(await pool1.balanceOf(strategy.address)).div(await pool1.totalSupply())
+            ))
+        })
       })
     })
   })
