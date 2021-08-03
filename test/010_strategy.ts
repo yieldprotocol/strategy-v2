@@ -195,7 +195,29 @@ describe('Strategy', async function () {
         it('can\'t swap to a new pool queue until maturity', async () => {
           await expect(strategy.swap())
             .to.be.revertedWith('Only after maturity')
-        })  
+        })
+
+        it('can swap to the next pool after maturity', async () => {
+          const snapshotId = await ethers.provider.send('evm_snapshot', [])
+          await ethers.provider.send('evm_mine', [maturity1 + 1])
+
+          await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped')
+
+          expect(await strategy.poolCounter()).to.equal(1)
+          expect(await strategy.pool()).to.equal(pool2.address)
+          expect(await strategy.fyToken()).to.equal(fyToken2.address)
+  
+          const vaultId = await strategy.vaultId()
+          const [vaultOwner, vaultSeriesId] = await vault.vaults(vaultId)
+          expect(vaultOwner).to.equal(strategy.address)
+          expect(vaultSeriesId).to.equal(series2Id)
+  
+          const poolCache = await strategy.poolCache()
+          expect(poolCache.base).to.equal(await pool2.baseCached())
+          expect(poolCache.fyToken).to.equal(await pool2.fyTokenCached())
+
+          await ethers.provider.send('evm_revert', [snapshotId])
+        })
 
         it('fyToken are counted towards the strategy value', async () => {
           await fyToken1.mint(strategy.address, WAD)
@@ -209,7 +231,7 @@ describe('Strategy', async function () {
             .to.equal(WAD.add(
               ((await base.balanceOf(pool1.address)).add(await fyToken1.balanceOf(pool1.address)))
                 .mul(await pool1.balanceOf(strategy.address)).div(await pool1.totalSupply())
-            ))
+          ))
         })
       })
     })

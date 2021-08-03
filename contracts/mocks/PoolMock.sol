@@ -62,6 +62,7 @@ contract PoolMock is ERC20, Ownable() {
 
     function sync() public {
         (baseReserves, fyTokenReserves) = (uint112(base.balanceOf(address(this))), uint112(fyToken.balanceOf(address(this))));
+        update();
     }
 
     function update() public {

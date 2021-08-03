@@ -253,14 +253,21 @@ contract Strategy is AccessControl, ERC20Rewards {
         } else {
             // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
             // With a bit of extra code, the collateral could be left in the vault
-            _divestAndRepay(pool.balanceOf(address(this)));
+            uint256 toDivest = pool.balanceOf(address(this));
+            if (toDivest > 0)
+                _divestAndRepay(toDivest);
 
             // Redeem any fyToken surplus
             uint256 toRedeem = fyToken.balanceOf(address(this));
-            fyToken.transfer(address(fyToken), toRedeem);
-            fyToken.redeem(address(this), toRedeem);
+            if (toRedeem > 0) {
+                fyToken.transfer(address(fyToken), toRedeem);
+                fyToken.redeem(address(this), toRedeem);
+            }
             poolCounter++;
         }
+
+        // Make sure the buffer is up to date
+        buffer = base.balanceOf(address(this));
 
         // Swap to the next pool
         if (poolCounter < pools.length) {   // We swap pool and vault, borrow and invest
@@ -282,7 +289,7 @@ contract Strategy is AccessControl, ERC20Rewards {
             });
 
             // Invest if there is enough in the buffer
-            if (base.balanceOf(address(this)) > limits.high) _borrowAndInvest(buffer - limits.mid);
+            if (buffer > limits.high) _borrowAndInvest(buffer - limits.mid);
         } else { // There is no next pool, we leave the funds in the buffer and disable investing
             pool = IPool(address(0));
             fyToken = IFYToken(address(0));
@@ -296,7 +303,6 @@ contract Strategy is AccessControl, ERC20Rewards {
                 high: type(uint80).max
             });
         }
-        buffer = base.balanceOf(address(this));
         emit PoolSwapped(address(pool));
     }
 
