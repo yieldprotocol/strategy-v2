@@ -219,6 +219,25 @@ describe('Strategy', async function () {
           await ethers.provider.send('evm_revert', [snapshotId])
         })
 
+        it('can swap out of the last pool', async () => {
+          const snapshotId = await ethers.provider.send('evm_snapshot', [])
+          await ethers.provider.send('evm_mine', [maturity2 + 1])
+
+          await strategy.swap() // Swap to next pool
+          await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped') // Swap out of next pool
+
+          expect(await strategy.poolCounter()).to.equal(MAX)
+          expect(await strategy.pool()).to.equal(ZERO_ADDRESS)
+          expect(await strategy.fyToken()).to.equal(ZERO_ADDRESS)
+          expect(await strategy.vaultId()).to.equal('0x' + '00'.repeat(12))
+  
+          const poolCache = await strategy.poolCache()
+          expect(poolCache.base).to.equal(ZERO_ADDRESS)
+          expect(poolCache.fyToken).to.equal(ZERO_ADDRESS)
+
+          await ethers.provider.send('evm_revert', [snapshotId])
+        })
+
         it('fyToken are counted towards the strategy value', async () => {
           await fyToken1.mint(strategy.address, WAD)
           expect(await strategy.strategyValue())

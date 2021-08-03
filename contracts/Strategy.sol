@@ -277,7 +277,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
             if (vaultId == bytes12(0)) (vaultId, ) = ladle.build(seriesId, baseId, 0);
             else ladle.tweak(vaultId, seriesId, baseId); // This will revert if the vault still has debt
-
+            
             // Get the remote pool cache
             (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();
             
@@ -291,17 +291,14 @@ contract Strategy is AccessControl, ERC20Rewards {
             // Invest if there is enough in the buffer
             if (buffer > limits.high) _borrowAndInvest(buffer - limits.mid);
         } else { // There is no next pool, we leave the funds in the buffer and disable investing
+            poolCounter = type(uint256).max;
             pool = IPool(address(0));
             fyToken = IFYToken(address(0));
             vaultId = bytes12(0);
 
             ladle.destroy(vaultId);
 
-            limits = Limits({
-                low: 0,
-                mid: 0,
-                high: type(uint80).max
-            });
+            delete poolCache;
         }
         emit PoolSwapped(address(pool));
     }
@@ -414,7 +411,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         internal
         returns (uint256 minted)
     {
-        require(_checkPoolDeviation() == false, "Pool reserves changed too fast");
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
 
         // Find pool proportion p = fyTokenReserves/tokenReserves
         // Deposit (investment * p) base to borrow (investment * p) fyToken
@@ -441,7 +438,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         internal
         returns (uint256 tokenDivested, uint256 fyTokenDivested)
     {
-        require(_checkPoolDeviation() == false, "Pool reserves changed too fast");
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
 
         // Burn lpTokens
         pool.transfer(address(pool), lpBurnt);
@@ -462,15 +459,15 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Check if the pool reserves have deviated more than the acceptable amount, and update the local pool cache.
-    function _checkPoolDeviation()
+    function _poolDeviated()
         internal
         returns (bool deviated)
     {
-        // Get the remote pool cache
-        (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();
-        
         // Get the local pool cache
         PoolCache memory poolCache_ = poolCache;
+
+        // Get the remote pool cache
+        (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();        
         
         // Calculate deviation as a linear function
         uint256 elapsed = block.timestamp - poolCache_.timestamp;
@@ -480,11 +477,13 @@ contract Strategy is AccessControl, ERC20Rewards {
             elapsed * 1e18 * poolFYToken / poolBase <=
             elapsed * poolDeviationRate * poolCache_.fyToken / poolCache_.base;
 
-        // Update the local pool cache
-        poolCache = PoolCache({
-            base: poolBase,
-            fyToken: poolFYToken,
-            timestamp: uint32(block.timestamp)
-        });
+        // At most once per block, update the local pool cache
+        if (poolCache_.timestamp != uint32(block.timestamp)) {
+            poolCache = PoolCache({
+                base: poolBase,
+                fyToken: poolFYToken,
+                timestamp: uint32(block.timestamp)
+            });
+        }
     }
 }
