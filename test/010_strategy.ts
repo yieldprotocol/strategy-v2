@@ -45,6 +45,9 @@ describe('Strategy', async function () {
   let pool1: PoolMock
   let pool2: PoolMock
 
+  let maturity1 = 1633046399
+  let maturity2 = 1640995199
+
   let baseId: string
   let series1Id: string
   let series2Id: string
@@ -73,11 +76,13 @@ describe('Strategy', async function () {
     vault = (await deployContract(ownerAcc, VaultMockArtifact, [])) as VaultMock
     base = await ethers.getContractAt('ERC20Mock', await vault.base(), ownerAcc) as unknown as ERC20Mock
     baseId = await vault.baseId()
-    series1Id = await vault.callStatic.addSeries()
-    await vault.addSeries()
+
+    series1Id = await vault.callStatic.addSeries(maturity1)
+    await vault.addSeries(maturity1)
     fyToken1 = await ethers.getContractAt('FYTokenMock', (await vault.series(series1Id)).fyToken, ownerAcc) as unknown as FYTokenMock
-    series2Id = await vault.callStatic.addSeries()
-    await vault.addSeries()
+
+    series2Id = await vault.callStatic.addSeries(maturity2)
+    await vault.addSeries(maturity2)
     fyToken2 = await ethers.getContractAt('FYTokenMock', (await vault.series(series2Id)).fyToken, ownerAcc) as unknown as FYTokenMock
 
     // Set up YieldSpace
@@ -186,6 +191,11 @@ describe('Strategy', async function () {
         beforeEach(async () => {
           await strategy.swap()
         })
+
+        it('can\'t swap to a new pool queue until maturity', async () => {
+          await expect(strategy.swap())
+            .to.be.revertedWith('Only after maturity')
+        })  
 
         it('fyToken are counted towards the strategy value', async () => {
           await fyToken1.mint(strategy.address, WAD)

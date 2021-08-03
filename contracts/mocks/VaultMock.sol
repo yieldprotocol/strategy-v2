@@ -56,11 +56,11 @@ contract VaultMock is ICauldron, ILadle {
     function assets(bytes6) external view override returns (address) { return address(base); }
     function joins(bytes6) external view override returns (address) { return baseJoin; }
 
-    function addSeries() external returns (bytes6) {
-        IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, 0)));
+    function addSeries(uint32 maturity_) external returns (bytes6) {
+        IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, maturity_)));
         series[bytes6(nextSeriesId++)] = DataTypes.Series({
             fyToken: fyToken,
-            maturity: 0,
+            maturity: maturity_,
             baseId: baseId
         });
 
