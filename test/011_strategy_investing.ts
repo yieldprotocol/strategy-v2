@@ -4,13 +4,13 @@ import { constants, id } from '@yield-protocol/utils-v2'
 const { WAD, MAX256 } = constants
 const MAX = MAX256
 
-import StrategyArtifact from '../artifacts/contracts/Strategy.sol/Strategy.json'
+import StrategyInternalsArtifact from '../artifacts/contracts/mocks/StrategyInternals.sol/StrategyInternals.json'
 import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultMock.json'
 import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
 import ERC20MockArtifact from '../artifacts/contracts/mocks/ERC20Mock.sol/ERC20Mock.json'
 
 import { ERC20Mock as ERC20, ERC20Mock } from '../typechain/ERC20Mock'
-import { Strategy } from '../typechain/Strategy'
+import { StrategyInternals as Strategy } from '../typechain/StrategyInternals'
 import { VaultMock } from '../typechain/VaultMock'
 import { PoolMock } from '../typechain/PoolMock'
 import { FYTokenMock } from '../typechain/FYTokenMock'
@@ -97,11 +97,12 @@ describe('Strategy - Investing', async function () {
     await pool1.sync()
     await pool2.sync()
 
-    strategy = (await deployContract(ownerAcc, StrategyArtifact, ['Strategy Token', 'STR', 18, vault.address, base.address, baseId])) as Strategy
+    strategy = (await deployContract(ownerAcc, StrategyInternalsArtifact, ['Strategy Token', 'STR', 18, vault.address, base.address, baseId])) as Strategy
 
     await strategy.grantRoles([
-      id('init(address)'),
       id('setPools(address[],bytes6[])'),
+      id('setLimits(uint80,uint80,uint80)'),
+      id('init(address)'),
       id('swap()'),
     ], owner)
 
@@ -134,5 +135,30 @@ describe('Strategy - Investing', async function () {
 
     // The buffer decreased by the amount given out
     expect((await strategy.buffer()).add(await base.balanceOf(user1))).to.equal(WAD.mul(2))
+  })
+
+  it('sets buffer limits', async () => {
+    await expect(strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15)))
+      .to.emit(strategy, 'LimitsSet')
+
+    expect((await strategy.limits()).low).to.equal(WAD.mul(5))
+    expect((await strategy.limits()).mid).to.equal(WAD.mul(10))
+    expect((await strategy.limits()).high).to.equal(WAD.mul(15))
+  })
+
+  describe('with investing enabled', async () => {
+    beforeEach(async () => {
+      await strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15))
+    })
+
+
+    it('sets buffer limits', async () => {
+      await expect(strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15)))
+        .to.emit(strategy, 'LimitsSet')
+
+      expect((await strategy.limits()).low).to.equal(WAD.mul(5))
+      expect((await strategy.limits()).mid).to.equal(WAD.mul(10))
+      expect((await strategy.limits()).high).to.equal(WAD.mul(15))
+    })
   })
 })
