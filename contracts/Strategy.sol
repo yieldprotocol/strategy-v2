@@ -121,8 +121,8 @@ contract Strategy is AccessControl, ERC20Rewards {
             high: type(uint80).max
         });
 
-        // This deviation rate allows a 100% deviation per second, basically disabling it
-        poolDeviationRate = 1e18;
+        // This deviation rate allows a 1% deviation per second
+        poolDeviationRate = 1e16;
     }
 
     modifier beforeMaturity() {
@@ -468,14 +468,16 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Get the remote pool cache
         (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();        
-        
+
+        // Floor the elapsed time at 1 to make the math work if there is a second event in the same block
+        uint256 elapsed = block.timestamp != poolCache_.timestamp ? block.timestamp - poolCache_.timestamp : 1;
+
         // Calculate deviation as a linear function
-        uint256 elapsed = block.timestamp - poolCache_.timestamp;
         deviated = 
-            elapsed * 1e18 * poolBase / poolFYToken <=
-            elapsed * poolDeviationRate * poolCache_.base / poolCache_.fyToken ||
-            elapsed * 1e18 * poolFYToken / poolBase <=
-            elapsed * poolDeviationRate * poolCache_.fyToken / poolCache_.base;
+            elapsed * 1e18 * poolBase / poolFYToken >
+            elapsed * (1e18 + poolDeviationRate) * poolCache_.base / poolCache_.fyToken ||
+            elapsed * 1e18 * poolFYToken / poolBase >
+            elapsed * (1e18 + poolDeviationRate) * poolCache_.fyToken / poolCache_.base;
 
         // At most once per block, update the local pool cache
         if (poolCache_.timestamp != uint32(block.timestamp)) {

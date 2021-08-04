@@ -102,6 +102,7 @@ describe('Strategy - Investing', async function () {
     await strategy.grantRoles([
       id('setPools(address[],bytes6[])'),
       id('setLimits(uint80,uint80,uint80)'),
+      id('setPoolDeviationRate(uint256)'),
       id('init(address)'),
       id('swap()'),
     ], owner)
@@ -135,6 +136,35 @@ describe('Strategy - Investing', async function () {
 
     // The buffer decreased by the amount given out
     expect((await strategy.buffer()).add(await base.balanceOf(user1))).to.equal(WAD.mul(2))
+  })
+
+  it('sets pool deviation rate', async () => {
+    await expect(strategy.setPoolDeviationRate(WAD.div(10))) // 10% / s
+      .to.emit(strategy, 'PoolDeviationRateSet')
+
+    expect(await strategy.poolDeviationRate()).to.equal(WAD.div(10))
+  })
+
+  it('checks pool deviation', async () => {
+    expect(await strategy.callStatic.poolDeviated()).to.be.false // The strategy cache is in sync with the pool at init
+    let cacheTimestamp = (await strategy.poolCache()).timestamp
+
+    // We are going to slightly increase the fyToken reserves in the pool, increasing the rate
+    await fyToken1.mint(pool1.address, WAD.mul(100))
+    await base.mint(pool1.address, WAD.mul(10)) // Also increase the base, to check the strategy caches the value
+    await pool1.sync()
+    expect(await strategy.callStatic.poolDeviated()).to.be.false // Still within limits
+    await strategy.poolDeviated() // Update the cache
+
+    expect((await strategy.poolCache()).fyToken).to.equal(WAD.mul(100100))
+    expect((await strategy.poolCache()).base).to.equal(WAD.mul(1000010))
+    expect((await strategy.poolCache()).timestamp).to.not.equal(cacheTimestamp)
+
+    // We are going to double the fyToken reserves in the pool, doubling the rate
+    await fyToken1.mint(pool1.address, WAD.mul(100000))
+    await pool1.sync()
+
+    expect(await strategy.callStatic.poolDeviated()).to.be.true
   })
 
   it('sets buffer limits', async () => {
