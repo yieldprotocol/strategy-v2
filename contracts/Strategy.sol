@@ -4,7 +4,7 @@ pragma solidity 0.8.1;
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/yieldspace-interfaces/IPool.sol";
+// import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "./ERC20Rewards.sol";
 
@@ -12,6 +12,7 @@ interface ILadle {
     function joins(bytes6) external view returns (address);
     function cauldron() external view returns (ICauldron);
     function build(bytes6 seriesId, bytes6 ilkId, uint8 salt) external returns (bytes12 vaultId, DataTypes.Vault memory vault);
+    function tweak(bytes12 vaultId, bytes6 seriesId, bytes6 ilkId) external returns (DataTypes.Vault memory vault);
     function destroy(bytes12 vaultId) external;
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
 }
@@ -22,13 +23,28 @@ interface ICauldron {
     function balances(bytes12) external view returns (DataTypes.Balances memory);
 }
 
-/* library CastU256U128 {
-    /// @dev Safely cast an uint256 to an uint128
-    function u128(uint256 x) internal pure returns (uint128 y) {
-        require (x <= type(uint128).max, "Cast overflow");
-        y = uint128(x);
-    }
-} */
+interface IPool is IERC20, IERC2612 {
+    function base() external view returns(IERC20);
+    function fyToken() external view returns(IFYToken);
+    function maturity() external view returns(uint32);
+    function getBaseBalance() external view returns(uint112);
+    function getFYTokenBalance() external view returns(uint112);
+    function retrieveBase(address to) external returns(uint128 retrieved);
+    function retrieveFYToken(address to) external returns(uint128 retrieved);
+    function sellBase(address to, uint128 min) external returns(uint128);
+    function buyBase(address to, uint128 baseOut, uint128 max) external returns(uint128);
+    function sellFYToken(address to, uint128 min) external returns(uint128);
+    function buyFYToken(address to, uint128 fyTokenOut, uint128 max) external returns(uint128);
+    function sellBasePreview(uint128 baseIn) external view returns(uint128);
+    function buyBasePreview(uint128 baseOut) external view returns(uint128);
+    function sellFYTokenPreview(uint128 fyTokenIn) external view returns(uint128);
+    function buyFYTokenPreview(uint128 fyTokenOut) external view returns(uint128);
+    function mint(address to, bool calculateFromBase, uint256 minTokensMinted) external returns (uint256, uint256, uint256);
+    function mintWithBase(address to, uint256 fyTokenToBuy, uint256 minTokensMinted) external returns (uint256, uint256, uint256);
+    function burn(address to, uint256 minBaseOut, uint256 minFYTokenOut) external returns (uint256, uint256, uint256);
+    function burnForBase(address to, uint256 minBaseOut) external returns (uint256, uint256);
+    function getCache() external view returns (uint112, uint112, uint32);
+}
 
 library CastU128I128 {
     /// @dev Safely cast an uint128 to an int128
@@ -47,7 +63,11 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenJoinReset(address join);
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
-    event PoolSwapped(address pool, bytes6 seriesId);
+    event PoolDeviationRateSet(uint256 poolDeviationRate);
+    event PoolsSet(IPool[] indexed pools, bytes6[] indexed seriesIds);
+    event PoolSwapped(address pool);
+    event Invest(uint256 minted);
+    event Divest(uint256 burnt);
 
     struct Limits {                              // Buffer limits, in 1e18 units
         uint80 low;                              // If the buffer would drop below this level, it fills to mid 
@@ -55,23 +75,32 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint80 high;                             // If the buffer would drop below this level, it drains to mid
     }
 
+    struct PoolCache {                           // Pool reserves and timestamp
+        uint112 base;                            // Cached base reserves
+        uint112 fyToken;                         // Cached fyToken reserves
+        uint32 timestamp;                        // Last time pool reserves cached locally
+    }
+
     IERC20 public immutable base;                // Base token for this strategy
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
-    Limits public limits;                        // Limits for unallocated funds
-    IPool public pool;                           // Pool that this strategy invests in
-    IFYToken public fyToken;                     // Current fyToken for this strategy
-    uint256 public buffer;                       // Unallocated base token in this strategy
     bytes12 public vaultId;                      // Vault used to borrow fyToken
 
-    constructor(ILadle ladle_, IERC20 base_, bytes6 baseId_)
-        ERC20Rewards(
-            "Yield LP Strategy",
-            "fyLPSTRAT",
-            18
-        )
+    Limits public limits;                        // Limits for unallocated funds
+    uint256 public buffer;                       // Unallocated base token in this strategy
+
+    IPool public pool;                           // Current pool that this strategy invests in
+    IFYToken public fyToken;                     // Current fyToken for this strategy
+    IPool[] public pools;                        // Pools that this strategy invests in, past, present and future
+    bytes6[] public seriesIds;                   // SeriesId for each pool in the pools array
+    uint256 public poolCounter;                  // Index of the current pool in the pools array
+    PoolCache public poolCache;                  // Local cache of pool reserves
+    uint256 public poolDeviationRate;            // Accepted deviation of the pool reserves, per second since last investment event
+
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+        ERC20Rewards(name, symbol, decimals)
     { 
         require(
             ladle_.cauldron().assets(baseId_) == address(base_),
@@ -84,17 +113,38 @@ contract Strategy is AccessControl, ERC20Rewards {
         ladle = ladle_;
         cauldron = ladle_.cauldron();
 
+        // This set of limits disables investing
         limits = Limits({
             low: 0,
-            mid: 1,
+            mid: 0,
             high: type(uint80).max
         });
+
+        // This deviation rate allows a 1% deviation per second
+        poolDeviationRate = 1e16;
+    }
+
+    modifier beforeMaturity() {
+        require (
+            fyToken.maturity() >= uint32(block.timestamp),
+            "Only before maturity"
+        );
+        _;
+    }
+
+    modifier afterMaturity() {
+        require (
+            fyToken == IFYToken(address(0)) || fyToken.maturity() < uint32(block.timestamp),
+            "Only after maturity"
+        );
+        _;
     }
 
     /// @dev Set a new Ladle and Cauldron
     /// @notice Use with extreme caution, only for Ladle replacements
     function setYield(ILadle ladle_, ICauldron cauldron_)
         public
+        afterMaturity
         auth
     {
         ladle = ladle_;
@@ -106,6 +156,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
     function setTokenId(bytes6 baseId_)
         public
+        afterMaturity
         auth
     {
         require(
@@ -120,6 +171,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice Use with extreme caution, only for Join replacements
     function resetTokenJoin()
         public
+        afterMaturity
         auth
     {
         baseJoin = ladle.joins(baseId);
@@ -144,82 +196,165 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit LimitsSet(low_, mid_, high_);
     }
 
-    /// @dev Swap funds to a new pool (auth)
-    /// @notice First the strategy must be fully divested from the old pool.
-    /// @notice First the strategy must repaid all debts from the old series.
-    /// TODO: Set an array of upcoming pools, and swap to the next one in the array
-    function swap(IPool pool_, bytes6 seriesId_)
+    /// @dev Set the buffer limits
+    function setPoolDeviationRate(uint256 poolDeviationRate_)
         public
         auth
     {
-        require (
-            fyToken.maturity() >= uint32(block.timestamp),
-            "Only after maturity"
-        );
+        poolDeviationRate = poolDeviationRate_;
+        emit PoolDeviationRateSet(poolDeviationRate_);
+    }
 
-        // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
-        // With a bit of extra code, the collateral could be left in the vault
-        _divestAndRepayAndRedeem(pool.balanceOf(address(this)), 0, 0);
+    /// @dev Set a queue of pools to invest in, sequentially
+    /// @notice Until the last pool reaches maturity, this can't be changed
+    function setPools(IPool[] memory pools_, bytes6[] memory seriesIds_) 
+        public
+        afterMaturity
+        auth
+    {
+        require (pools.length == 0 || poolCounter == pools.length - 1, "Pools still queued");
+        for (uint256 p = 0; p < pools_.length; p++) {
+            DataTypes.Series memory series = cauldron.series(seriesIds_[p]);
+            require(
+                series.fyToken == pools_[p].fyToken(),
+                "Mismatched seriesId"
+            );
+        }
+        pools = pools_;
+        seriesIds = seriesIds_;
+        poolCounter = type(uint256).max;
 
-        // Swap the series (fyToken and pool). 
-        DataTypes.Series memory series = cauldron.series(seriesId_);
-        require(
-            series.fyToken == pool_.fyToken(),
-            "Mismatched seriesId"
-        );
+        emit PoolsSet(pools_, seriesIds_);
+    }
 
-        // Replace the vault. We could also use tweak.
-        if (vaultId != bytes12(0)) ladle.destroy(vaultId); // This will revert unless the vault has been emptied
-        (vaultId, ) = ladle.build(seriesId_, baseId, 0);
+    /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
+    /// @notice The funds for initialization must have been sent previously, using a batchable router.
+    function init(address to)
+        public
+        auth
+    {
+        require (_totalSupply == 0, "Already initialized");
+        buffer = base.balanceOf(address(this));
+        _mint(to, buffer);
+    }
 
-        pool = pool_;
-        fyToken = pool_.fyToken();
+    /// @dev Swap funds to the next pool
+    /// @notice If there is no next pool, all funds are divested, and investing disabled
+    /// @notice This function is permissioned to avoid sandwiching on investing
+    function swap()
+        public
+        auth
+        afterMaturity
+    {
+        // Divest from the current pool
+        if (poolCounter == type(uint256).max) { // First pool in the set
+            poolCounter = 0;
+        } else {
+            // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
+            // With a bit of extra code, the collateral could be left in the vault
+            uint256 toDivest = pool.balanceOf(address(this));
+            if (toDivest > 0)
+                _divestAndRepay(toDivest);
 
-        // Invest, leaving the buffer amount
-        _borrowAndInvest(buffer - limits.mid, 0);
-        emit PoolSwapped(address(pool_), seriesId_);
+            // Redeem any fyToken surplus
+            uint256 toRedeem = fyToken.balanceOf(address(this));
+            if (toRedeem > 0) {
+                fyToken.transfer(address(fyToken), toRedeem);
+                fyToken.redeem(address(this), toRedeem);
+            }
+            poolCounter++;
+        }
+
+        // Make sure the buffer is up to date
+        buffer = base.balanceOf(address(this));
+
+        // Swap to the next pool
+        if (poolCounter < pools.length) {   // We swap pool and vault, borrow and invest
+            pool = pools[poolCounter];
+            fyToken = pool.fyToken();
+            bytes6 seriesId = seriesIds[poolCounter];
+
+            if (vaultId == bytes12(0)) (vaultId, ) = ladle.build(seriesId, baseId, 0);
+            else ladle.tweak(vaultId, seriesId, baseId); // This will revert if the vault still has debt
+            
+            // Get the remote pool cache
+            (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();
+            
+            // Update the local pool cache
+            poolCache = PoolCache({
+                base: poolBase,
+                fyToken: poolFYToken,
+                timestamp: uint32(block.timestamp)
+            });
+
+            // Invest if there is enough in the buffer
+            if (buffer > limits.high) _borrowAndInvest(buffer - limits.mid);
+        } else { // There is no next pool, we leave the funds in the buffer and disable investing
+            poolCounter = type(uint256).max;
+            pool = IPool(address(0));
+            fyToken = IFYToken(address(0));
+            vaultId = bytes12(0);
+
+            ladle.destroy(vaultId);
+
+            delete poolCache;
+        }
+        emit PoolSwapped(address(pool));
     }
 
     /// @dev Value of the strategy in base token terms
     function strategyValue()
         external view
-        returns (uint256 strategy)
+        returns (uint256 value)
     {
-        strategy = _strategyValue();
+        value = _strategyValue();
     }
 
     /// @dev Value of the strategy in base token terms
+    /// @notice LP tokens and fyToken are only counted towards the strategy value for the current pool
     function _strategyValue()
         internal view
-        returns (uint256 strategy)
+        returns (uint256 value)
     {
         //  - Can we use 1 fyToken = 1 base for this purpose? It overvalues the value of the strategy.
         //  - If so lpTokens/lpSupply * (lpReserves + lpFYReserves) + unallocated = value_in_token(strategy)
-        strategy = (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)) * 
-            pool.balanceOf(address(this))) / pool.totalSupply() + buffer;
+        if (pool != IPool(address(0))) value =
+            ((base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))
+             * pool.balanceOf(address(this))) / pool.totalSupply()
+             + fyToken.balanceOf(address(this))
+             + buffer;
+        else value = buffer;
     }
 
-    /// @dev Mint strategy tokens. The underlying tokens that the user contributes need to have been transferred previously.
+    /// @dev Mint strategy tokens. Invests if the available funds end above levels.
+    /// @notice The underlying tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to)
         public
+        beforeMaturity
         returns (uint256 minted)
     {
         // Find value of strategy
         // Find value of deposit. Straightforward if done in base
         // minted = supply * deposit/strategy
-        uint256 deposit = base.balanceOf(address(this)) - buffer;
+        uint256 buffer_ = base.balanceOf(address(this));
+        uint256 deposit = buffer_ - buffer;
         minted = _totalSupply - deposit / _strategyValue();
         
-        // Invest if the deposit would lead to `buffer` over `limits.high`
-        if (buffer + deposit > limits.high) {
-            _drainBuffer(deposit, 0); // TODO: Set slippage as a twap
+        // Invest if the buffer has gone over `limits.high`
+        if (buffer_ > limits.high) {
+            // Find out how much of the buffer we need to invest so that buffer + deposit = buffer.mid
+            // Borrow and invest, so that the buffer remains at limits.mid
+            _borrowAndInvest(buffer_ - limits.mid);
+            buffer = limits.mid;
+        } else {
+            buffer = buffer_;
         }
-        buffer += deposit;
 
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw funds. Replenish the available funds limits if below levels
+    /// @dev Burn strategy tokens to withdraw funds. Divests if the available funds would end below levels
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address to)
         public
         returns (uint256 withdrawal)
@@ -232,81 +367,42 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Divest if the withdrawal would lead to `buffer` below `limits.low`
         if (withdrawal > buffer || buffer - withdrawal < limits.low) {
-            _fillBuffer(withdrawal, 0, 0); // TODO: Set slippage as a twap
+            // Find out how many lp tokens we need to burn so that buffer - withdrawal = buffer.mid
+            uint256 toObtain = limits.mid + withdrawal - buffer;
+            // Find value of lp tokens in base terms, scaled up for precision
+            uint256 lpValueUp = (1e18 * (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))) / pool.totalSupply();
+            uint256 toDivest = (1e18 * toObtain) / lpValueUp;   // It doesn't matter if the amount to divest is off by some wei
+            // Divest and repay
+            _divestAndRepay(toDivest);
+
+            buffer = base.balanceOf(address(this)) - withdrawal; // The amount of base obtained can be affected by rounding, better to sync thna to use limits.mid
         }
-        buffer -= withdrawal;
+        else {
+            buffer -= withdrawal;
+        }
+
         _burn(address(this), toBurn);
         base.transfer(to, withdrawal);
     }
 
-    /// @dev Drain the available funds buffer to the mid point
-    function drainBuffer(uint256 min)
-        public
-        auth
-        returns (uint256 tokenInvested)
-    {
-        tokenInvested = _drainBuffer(0, min);
-    }
-
-    /// @dev Fill the available funds buffer to the mid point
-    function fillBuffer(uint256 minTokenReceived, uint256 minFYTokenReceived)
-        public
-        auth
-        returns (uint256 tokenDivested, uint256 fyTokenDivested)
-    {
-        (tokenDivested, fyTokenDivested) = _fillBuffer(0, minTokenReceived, minFYTokenReceived);
-    }
-
-    /// @dev Drain the available funds buffer, after an hypothetical deposit
-    function _drainBuffer(uint256 deposit, uint256 min)
-        internal
-        returns (uint256 tokenInvested)
-    {
-        require(
-            buffer + deposit > limits.high,
-            "Buffer not high enough"
-        );
-
-        // Find out how much of the buffer we need to invest so that buffer + deposit = buffer.mid
-        uint256 toInvest = deposit + buffer - limits.mid;
-        // Borrow and invest
-        tokenInvested = _borrowAndInvest(toInvest, min);
-    }
-
-    /// @dev Fill the available funds buffer to the mid point, after an hypothetical withdrawal
-    function _fillBuffer(uint256 withdrawal, uint256 minTokenReceived, uint256 minFYTokenReceived)
-        internal
-        returns (uint256 tokenDivested, uint256 fyTokenDivested)
-    {
-        require(
-            buffer - withdrawal < limits.low,
-            "Buffer not low enough"
-        );
-
-        // Find out how many lp tokens we need to burn so that buffer - withdrawal = buffer.mid
-        uint256 toObtain = limits.mid + withdrawal - buffer;
-        // Find value of lp tokens in base terms, scaled up for precision
-        uint256 lpValueUp = (1e18 * (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))) / pool.totalSupply();
-        uint256 toDivest = (1e18 * toObtain) / lpValueUp;
-        // Divest and repay
-        (tokenDivested, fyTokenDivested) = _divestAndRepayAndSell(toDivest, minTokenReceived, minFYTokenReceived);
-    }
-
     /// @dev Invest available funds from the strategy into YieldSpace LP - Borrow and mint
-    function _borrowAndInvest(uint256 tokenInvested, uint256 min)
+    function _borrowAndInvest(uint256 tokenInvested)
         internal
         returns (uint256 minted)
     {
-        buffer -= tokenInvested;
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
 
-        // Find pool proportion p = fyTokenReserves/tokenReserves
-        uint256 proportion = 1e18 * fyToken.balanceOf(address(pool)) / base.balanceOf(address(pool));
+        // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
         //   (investment * p) fyToken + (investment * (1 - p)) base = investment
         //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
         //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-        uint256 fyTokenToPool = tokenInvested * proportion / 1e18;
-        uint256 tokenToPool = tokenInvested - fyTokenToPool;
+
+        uint256 baseInPool = base.balanceOf(address(pool));
+        uint256 fyTokenInPool = fyToken.balanceOf(address(pool));
+        
+        uint256 tokenToPool = (tokenInvested * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
+        uint256 fyTokenToPool = tokenInvested - tokenToPool;        // fyTokenToPool is rounded up
 
         base.transfer(baseJoin, fyTokenToPool);
         int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
@@ -314,61 +410,66 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.transfer(address(pool), tokenToPool);
-        (,, minted) = pool.mint(address(this), true, min);
+        (,, minted) = pool.mint(address(this), true, 0); // We already checked for slippage
+
+        emit Invest(minted);
     }
 
-    /// @dev Divest from YieldSpace LP into available funds for the strategy - Burn and repay and sell
-    function _divestAndRepayAndSell(uint256 lpBurnt, uint256 minTokenReceived, uint256 minFYTokenReceived)
+    /// @dev Divest from YieldSpace LP into available funds for the strategy - Burn and repay
+    function _divestAndRepay(uint256 lpBurnt)
         internal
         returns (uint256 tokenDivested, uint256 fyTokenDivested)
     {
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
+
         // Burn lpTokens
         pool.transfer(address(pool), lpBurnt);
-        (, tokenDivested, fyTokenDivested) = pool.burn(address(this), minTokenReceived, minFYTokenReceived);
+        (, tokenDivested, fyTokenDivested) = pool.burn(address(this), 0, 0); // We already checked for slippage
         
         // Repay with fyToken as much as possible
         uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
-        
-        fyToken.transfer(address(fyToken), toRepay);
-        int128 toRepay_ = toRepay.u128().i128();
-        ladle.pour(vaultId, address(this), toRepay_, toRepay_);
-
-        // Sell any surplus fyToken (which will fill the buffer again :/ )
-        // TODO: Branch out to keep the surplus fyToken into a buffer, which will be redeemed on swapping pools
-        uint128 toSell = (fyTokenDivested - toRepay).u128();
-        if (toSell > 0) {
-            fyToken.transfer(address(pool), toSell);
-            buffer += pool.sellFYToken(address(this), 0); // TODO: Set slippage as a twap
+        uint256 fyTokenAvailable = fyToken.balanceOf(address(this));    // If there is a surplus from a previous divestment event, use it.
+        if (debt > 0 && fyTokenAvailable > 0) {
+            uint256 toRepay = (debt >= fyTokenAvailable) ? fyTokenAvailable : debt;
+            
+            fyToken.transfer(address(fyToken), toRepay);
+            int128 toRepay_ = toRepay.u128().i128();
+            ladle.pour(vaultId, address(this), -toRepay_, -toRepay_);   // Negative ink = withdraw, negative art = repay
         }
-        buffer += tokenDivested;  
+
+        // Any surplus fyToken remains in the contract, locked until there is debt and a divestment event.
+
+        emit Divest(lpBurnt);
     }
 
-
-    /// @dev Divest from YieldSpace LP into available funds for the strategy - Burn and repay and redeem
-    function _divestAndRepayAndRedeem(uint256 lpBurnt, uint256 minTokenReceived, uint256 minFYTokenReceived)
+    /// @dev Check if the pool reserves have deviated more than the acceptable amount, and update the local pool cache.
+    function _poolDeviated()
         internal
-        returns (uint256 tokenDivested, uint256 fyTokenDivested)
+        returns (bool deviated)
     {
-        // Burn lpTokens
-        pool.transfer(address(pool), lpBurnt);
-        (, tokenDivested, fyTokenDivested) = pool.burn(address(this), minTokenReceived, minFYTokenReceived);
-        
-        // Repay with fyToken as much as possible
-        uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
-        
-        fyToken.transfer(address(fyToken), toRepay);
-        int128 toRepay_ = toRepay.u128().i128();
-        ladle.pour(vaultId, address(this), toRepay_, toRepay_);
+        // Get the local pool cache
+        PoolCache memory poolCache_ = poolCache;
 
-        // Sell any surplus fyToken (which will fill the buffer again :/ )
-        // TODO: Branch out to keep the surplus fyToken into a buffer, which will be redeemed on swapping pools
-        uint128 toRedeem = (fyTokenDivested - toRepay).u128();
-        if (toRedeem > 0) {
-            fyToken.transfer(address(fyToken), toRedeem);
-            buffer += fyToken.redeem(address(this), toRedeem);
+        // Get the remote pool cache
+        (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();        
+
+        // Floor the elapsed time at 1 to make the math work if there is a second event in the same block
+        uint256 elapsed = block.timestamp != poolCache_.timestamp ? block.timestamp - poolCache_.timestamp : 1;
+
+        // Calculate deviation as a linear function
+        deviated = 
+            elapsed * 1e18 * poolBase / poolFYToken >
+            elapsed * (1e18 + poolDeviationRate) * poolCache_.base / poolCache_.fyToken ||
+            elapsed * 1e18 * poolFYToken / poolBase >
+            elapsed * (1e18 + poolDeviationRate) * poolCache_.fyToken / poolCache_.base;
+
+        // At most once per block, update the local pool cache
+        if (poolCache_.timestamp != uint32(block.timestamp)) {
+            poolCache = PoolCache({
+                base: poolBase,
+                fyToken: poolFYToken,
+                timestamp: uint32(block.timestamp)
+            });
         }
-        buffer += tokenDivested;  
     }
 }

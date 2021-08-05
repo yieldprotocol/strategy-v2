@@ -42,7 +42,7 @@ contract VaultMock is ICauldron, ILadle {
     mapping (bytes12 => DataTypes.Balances) public balances;
 
     uint96 public lastVaultId;
-    uint48 public lastSeriesId;
+    uint48 public nextSeriesId;
 
     constructor() {
         cauldron = ICauldron(address(this));
@@ -56,15 +56,15 @@ contract VaultMock is ICauldron, ILadle {
     function assets(bytes6) external view override returns (address) { return address(base); }
     function joins(bytes6) external view override returns (address) { return baseJoin; }
 
-    function addSeries() external returns (bytes6) {
-        IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, 0)));
-        series[bytes6(lastSeriesId++)] = DataTypes.Series({
+    function addSeries(uint32 maturity_) external returns (bytes6) {
+        IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, maturity_)));
+        series[bytes6(nextSeriesId++)] = DataTypes.Series({
             fyToken: fyToken,
-            maturity: 0,
+            maturity: maturity_,
             baseId: baseId
         });
 
-        return bytes6(lastSeriesId);
+        return bytes6(nextSeriesId - 1);
     }
 
     function build(bytes6 seriesId, bytes6 ilkId, uint8) external override returns (bytes12 vaultId, DataTypes.Vault memory vault) {
@@ -74,7 +74,7 @@ contract VaultMock is ICauldron, ILadle {
             ilkId: ilkId
         });
 
-        return (bytes12(lastVaultId), vaults[bytes12(lastVaultId)]);
+        return (bytes12(lastVaultId - 1), vaults[bytes12(lastVaultId - 1)]);
     }
 
     function destroy(bytes12 vaultId) external override {
@@ -85,10 +85,10 @@ contract VaultMock is ICauldron, ILadle {
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external override {
         if (ink > 0) base_.burn(address(this), uint128(ink)); // Simulate taking the base, which is also the collateral
         if (ink < 0) base_.mint(to, uint128(-ink));
-        balances[vaultId].ink.add(ink);
-        balances[vaultId].art.add(art);
+        balances[vaultId].ink = balances[vaultId].ink.add(ink);
+        balances[vaultId].art = balances[vaultId].art.add(art);
         address fyToken = address(series[vaults[vaultId].seriesId].fyToken);
         if (art > 0) FYTokenMock(fyToken).mint(to, uint128(art));
-        if (ink < 0) FYTokenMock(fyToken).burn(fyToken, uint128(-art));
+        if (art < 0) FYTokenMock(fyToken).burn(fyToken, uint128(-art));
     }
 }
