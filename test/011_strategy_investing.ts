@@ -76,16 +76,24 @@ describe('Strategy - Investing', async function () {
   beforeEach(async () => {
     // Set up Vault and Series
     vault = (await deployContract(ownerAcc, VaultMockArtifact, [])) as VaultMock
-    base = await ethers.getContractAt('ERC20Mock', await vault.base(), ownerAcc) as unknown as ERC20Mock
+    base = ((await ethers.getContractAt('ERC20Mock', await vault.base(), ownerAcc)) as unknown) as ERC20Mock
     baseId = await vault.baseId()
 
     series1Id = await vault.callStatic.addSeries(maturity1)
     await vault.addSeries(maturity1)
-    fyToken1 = await ethers.getContractAt('FYTokenMock', (await vault.series(series1Id)).fyToken, ownerAcc) as unknown as FYTokenMock
+    fyToken1 = ((await ethers.getContractAt(
+      'FYTokenMock',
+      (await vault.series(series1Id)).fyToken,
+      ownerAcc
+    )) as unknown) as FYTokenMock
 
     series2Id = await vault.callStatic.addSeries(maturity2)
     await vault.addSeries(maturity2)
-    fyToken2 = await ethers.getContractAt('FYTokenMock', (await vault.series(series2Id)).fyToken, ownerAcc) as unknown as FYTokenMock
+    fyToken2 = ((await ethers.getContractAt(
+      'FYTokenMock',
+      (await vault.series(series2Id)).fyToken,
+      ownerAcc
+    )) as unknown) as FYTokenMock
 
     // Set up YieldSpace
     pool1 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken1.address])) as PoolMock
@@ -99,15 +107,25 @@ describe('Strategy - Investing', async function () {
     await pool1.sync()
     await pool2.sync()
 
-    strategy = (await deployContract(ownerAcc, StrategyInternalsArtifact, ['Strategy Token', 'STR', 18, vault.address, base.address, baseId])) as Strategy
+    strategy = (await deployContract(ownerAcc, StrategyInternalsArtifact, [
+      'Strategy Token',
+      'STR',
+      18,
+      vault.address,
+      base.address,
+      baseId,
+    ])) as Strategy
 
-    await strategy.grantRoles([
-      id('setPools(address[],bytes6[])'),
-      id('setLimits(uint80,uint80,uint80)'),
-      id('setPoolDeviationRate(uint256)'),
-      id('init(address)'),
-      id('swap()'),
-    ], owner)
+    await strategy.grantRoles(
+      [
+        id('setPools(address[],bytes6[])'),
+        id('setLimits(uint80,uint80,uint80)'),
+        id('setPoolDeviationRate(uint256)'),
+        id('init(address)'),
+        id('swap()'),
+      ],
+      owner
+    )
 
     // Init strategy
     await base.mint(strategy.address, WAD)
@@ -121,8 +139,7 @@ describe('Strategy - Investing', async function () {
 
   it('mints and burns', async () => {
     await base.mint(strategy.address, WAD)
-    await expect(strategy.mint(user1))
-      .to.emit(strategy, 'Transfer')
+    await expect(strategy.mint(user1)).to.emit(strategy, 'Transfer')
 
     // WAD base went to the buffer
     expect(await strategy.buffer()).to.equal(WAD.mul(2))
@@ -131,8 +148,7 @@ describe('Strategy - Investing', async function () {
     almostEqual(await strategy.balanceOf(user1), WAD, BigNumber.from(1000000))
 
     await strategy.connect(user1Acc).transfer(strategy.address, await strategy.balanceOf(user1))
-    await expect(strategy.burn(user1))
-      .to.emit(strategy, 'Transfer')
+    await expect(strategy.burn(user1)).to.emit(strategy, 'Transfer')
 
     // The strategy value is equal to its buffer, so the user received as many base tokens as strategy tokens burnt
     almostEqual(await base.balanceOf(user1), WAD, BigNumber.from(1000000))
@@ -171,8 +187,7 @@ describe('Strategy - Investing', async function () {
   })
 
   it('sets buffer limits', async () => {
-    await expect(strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15)))
-      .to.emit(strategy, 'LimitsSet')
+    await expect(strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15))).to.emit(strategy, 'LimitsSet')
 
     expect((await strategy.limits()).low).to.equal(WAD.mul(5))
     expect((await strategy.limits()).mid).to.equal(WAD.mul(10))
@@ -187,9 +202,8 @@ describe('Strategy - Investing', async function () {
     })
 
     it('borrows and invests', async () => {
-      await expect(strategy.borrowAndInvest(WAD))
-        .to.emit(strategy, 'Invest')
-      
+      await expect(strategy.borrowAndInvest(WAD)).to.emit(strategy, 'Invest')
+
       expect(await base.balanceOf(strategy.address)).to.equal(WAD.mul(99))
       almostEqual((await vault.balances(vaultId)).art, WAD.div(10), BigNumber.from(1000000))
       almostEqual(await pool1.fyTokenReserves(), await fyToken1.balanceOf(pool1.address), BigNumber.from(1000000))
@@ -199,12 +213,11 @@ describe('Strategy - Investing', async function () {
       beforeEach(async () => {
         await strategy.borrowAndInvest(WAD)
       })
-  
+
       it('divests and repays', async () => {
         const lpTokens = await pool1.balanceOf(strategy.address)
-        await expect(strategy.divestAndRepay(lpTokens))
-          .to.emit(strategy, 'Divest')
-        
+        await expect(strategy.divestAndRepay(lpTokens)).to.emit(strategy, 'Divest')
+
         almostEqual(await base.balanceOf(strategy.address), WAD.mul(100), BigNumber.from(1000000))
         almostEqual((await vault.balances(vaultId)).art, BigNumber.from(0), BigNumber.from(1000000))
       })
