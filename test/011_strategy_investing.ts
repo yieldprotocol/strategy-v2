@@ -209,9 +209,18 @@ describe('Strategy - Investing', async function () {
       almostEqual(await pool1.fyTokenReserves(), await fyToken1.balanceOf(pool1.address), BigNumber.from(1000000))
     })
 
+    it('minting can trigger an invest event', async () => {
+      await base.mint(strategy.address, WAD)
+      await expect(strategy.mint(owner)).to.emit(strategy, 'Invest')
+
+      expect(await base.balanceOf(strategy.address)).to.equal(WAD.mul(10))
+      expect(await strategy.buffer()).to.equal(WAD.mul(10))
+      almostEqual(await strategy.strategyValue(), WAD.mul(101), BigNumber.from(1000000))
+    })
+
     describe('with an amount invested', async () => {
       beforeEach(async () => {
-        await strategy.borrowAndInvest(WAD)
+        await strategy.mint(owner) // `mint` instead of `borrowAndInvest` so that the buffer gets updated
       })
 
       it('divests and repays', async () => {
@@ -220,6 +229,15 @@ describe('Strategy - Investing', async function () {
 
         almostEqual(await base.balanceOf(strategy.address), WAD.mul(100), BigNumber.from(1000000))
         almostEqual((await vault.balances(vaultId)).art, BigNumber.from(0), BigNumber.from(1000000))
+      })
+
+      it('burning can trigger an invest event', async () => {
+        await strategy.transfer(strategy.address, (await strategy.balanceOf(owner)).mul(6).div(100)) // 6 WAD worth of base should be enough to trigger a divestment event
+        await expect(strategy.burn(owner)).to.emit(strategy, 'Divest')
+
+        almostEqual(await base.balanceOf(strategy.address), WAD.mul(10), BigNumber.from(1000000))
+        almostEqual(await strategy.buffer(), WAD.mul(10), BigNumber.from(1000000))
+        almostEqual(await strategy.strategyValue(), WAD.mul(94), BigNumber.from(1000000))
       })
     })
   })

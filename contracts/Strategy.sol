@@ -375,7 +375,7 @@ contract Strategy is AccessControl, ERC20Rewards {
             // Divest and repay
             _divestAndRepay(toDivest);
 
-            buffer = limits.mid;
+            buffer = base.balanceOf(address(this)) - withdrawal; // The amount of base obtained can be affected by rounding, better to sync thna to use limits.mid
         }
         else {
             buffer -= withdrawal;
