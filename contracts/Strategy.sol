@@ -336,12 +336,19 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Find value of strategy
         // Find value of deposit. Straightforward if done in base
         // minted = supply * deposit/strategy
-        uint256 deposit = base.balanceOf(address(this)) - buffer;
+        uint256 buffer_ = base.balanceOf(address(this));
+        uint256 deposit = buffer_ - buffer;
         minted = _totalSupply - deposit / _strategyValue();
         
-        // Invest if the deposit would lead to `buffer` over `limits.high`
-        if (buffer + deposit > limits.high) _drainBuffer(deposit);
-        else buffer += deposit;
+        // Invest if the buffer has gone over `limits.high`
+        if (buffer_ > limits.high) {
+            // Find out how much of the buffer we need to invest so that buffer + deposit = buffer.mid
+            // Borrow and invest, so that the buffer remains at limits.mid
+            _borrowAndInvest(buffer_ - limits.mid);
+            buffer = limits.mid;
+        } else {
+            buffer = buffer_;
+        }
 
         _mint(to, minted);
     }
@@ -359,50 +366,23 @@ contract Strategy is AccessControl, ERC20Rewards {
         withdrawal = _strategyValue() * toBurn / _totalSupply;
 
         // Divest if the withdrawal would lead to `buffer` below `limits.low`
-        if (withdrawal > buffer || buffer - withdrawal < limits.low) _fillBuffer(withdrawal);
-        else buffer -= withdrawal;
+        if (withdrawal > buffer || buffer - withdrawal < limits.low) {
+            // Find out how many lp tokens we need to burn so that buffer - withdrawal = buffer.mid
+            uint256 toObtain = limits.mid + withdrawal - buffer;
+            // Find value of lp tokens in base terms, scaled up for precision
+            uint256 lpValueUp = (1e18 * (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))) / pool.totalSupply();
+            uint256 toDivest = (1e18 * toObtain) / lpValueUp;   // It doesn't matter if the amount to divest is off by some wei
+            // Divest and repay
+            _divestAndRepay(toDivest);
+
+            buffer = limits.mid;
+        }
+        else {
+            buffer -= withdrawal;
+        }
 
         _burn(address(this), toBurn);
         base.transfer(to, withdrawal);
-    }
-
-    /// @dev Drain the available funds buffer, after an hypothetical deposit
-    function _drainBuffer(uint256 deposit)
-        internal
-        returns (uint256 tokenInvested)
-    {
-        require(
-            buffer + deposit > limits.high,
-            "Buffer not high enough"
-        );
-
-        // Find out how much of the buffer we need to invest so that buffer + deposit = buffer.mid
-        uint256 toInvest = deposit + buffer - limits.mid;
-        // Borrow and invest
-        tokenInvested = _borrowAndInvest(toInvest);
-
-        buffer = base.balanceOf(address(this));
-    }
-
-    /// @dev Fill the available funds buffer to the mid point, after an hypothetical withdrawal
-    function _fillBuffer(uint256 withdrawal)
-        internal
-        returns (uint256 tokenDivested, uint256 fyTokenDivested)
-    {
-        require(
-            buffer - withdrawal < limits.low,
-            "Buffer not low enough"
-        );
-
-        // Find out how many lp tokens we need to burn so that buffer - withdrawal = buffer.mid
-        uint256 toObtain = limits.mid + withdrawal - buffer;
-        // Find value of lp tokens in base terms, scaled up for precision
-        uint256 lpValueUp = (1e18 * (base.balanceOf(address(pool)) + fyToken.balanceOf(address(pool)))) / pool.totalSupply();
-        uint256 toDivest = (1e18 * toObtain) / lpValueUp;   // It doesn't matter if the amount to divest is off by some wei
-        // Divest and repay
-        (tokenDivested, fyTokenDivested) = _divestAndRepay(toDivest);
-
-        buffer = base.balanceOf(address(this));
     }
 
     /// @dev Invest available funds from the strategy into YieldSpace LP - Borrow and mint

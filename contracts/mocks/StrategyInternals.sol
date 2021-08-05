@@ -11,22 +11,6 @@ contract StrategyInternals is Strategy {
         Strategy(name, symbol, decimals, ladle_, base_, baseId_)
     { }
 
-    /// @dev Drain the available funds buffer, after an hypothetical deposit
-    function drainBuffer(uint256 deposit)
-        public
-        returns (uint256)
-    {
-        return _drainBuffer(deposit);
-    }
-
-    /// @dev Fill the available funds buffer to the mid point, after an hypothetical withdrawal
-    function fillBuffer(uint256 withdrawal)
-        public
-        returns (uint256, uint256)
-    {
-        return _fillBuffer(withdrawal);
-    }
-
     /// @dev Invest available funds from the strategy into YieldSpace LP - Borrow and mint
     function borrowAndInvest(uint256 tokenInvested)
         public
