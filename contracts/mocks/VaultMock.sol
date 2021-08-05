@@ -85,10 +85,10 @@ contract VaultMock is ICauldron, ILadle {
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external override {
         if (ink > 0) base_.burn(address(this), uint128(ink)); // Simulate taking the base, which is also the collateral
         if (ink < 0) base_.mint(to, uint128(-ink));
-        balances[vaultId].ink.add(ink);
-        balances[vaultId].art.add(art);
+        balances[vaultId].ink = balances[vaultId].ink.add(ink);
+        balances[vaultId].art = balances[vaultId].art.add(art);
         address fyToken = address(series[vaults[vaultId].seriesId].fyToken);
         if (art > 0) FYTokenMock(fyToken).mint(to, uint128(art));
-        if (ink < 0) FYTokenMock(fyToken).burn(fyToken, uint128(-art));
+        if (art < 0) FYTokenMock(fyToken).burn(fyToken, uint128(-art));
     }
 }

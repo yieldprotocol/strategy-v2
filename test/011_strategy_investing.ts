@@ -52,6 +52,8 @@ describe('Strategy - Investing', async function () {
   let series1Id: string
   let series2Id: string
 
+  let vaultId: string
+
   const ZERO_ADDRESS = '0x' + '0'.repeat(40)
 
   async function fixture() {} // For now we just use this to snapshot and revert the state of the blockchain
@@ -88,8 +90,8 @@ describe('Strategy - Investing', async function () {
     // Set up YieldSpace
     pool1 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken1.address])) as PoolMock
     pool2 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken2.address])) as PoolMock
-    await base.mint(pool1.address, WAD.mul(1000000))
-    await base.mint(pool2.address, WAD.mul(1000000))
+    await base.mint(pool1.address, WAD.mul(900000))
+    await base.mint(pool2.address, WAD.mul(900000))
     await fyToken1.mint(pool1.address, WAD.mul(100000))
     await fyToken2.mint(pool2.address, WAD.mul(100000))
     await pool1.mint(owner, true, 0)
@@ -112,6 +114,7 @@ describe('Strategy - Investing', async function () {
     await strategy.init(owner)
     await strategy.setPools([pool1.address, pool2.address], [series1Id, series2Id])
     await strategy.swap()
+    vaultId = await strategy.vaultId()
   })
 
   it('sets up testing environment', async () => {})
@@ -157,7 +160,7 @@ describe('Strategy - Investing', async function () {
     await strategy.poolDeviated() // Update the cache
 
     expect((await strategy.poolCache()).fyToken).to.equal(WAD.mul(100100))
-    expect((await strategy.poolCache()).base).to.equal(WAD.mul(1000010))
+    expect((await strategy.poolCache()).base).to.equal(WAD.mul(900010))
     expect((await strategy.poolCache()).timestamp).to.not.equal(cacheTimestamp)
 
     // We are going to double the fyToken reserves in the pool, doubling the rate
@@ -178,17 +181,33 @@ describe('Strategy - Investing', async function () {
 
   describe('with investing enabled', async () => {
     beforeEach(async () => {
+      await base.mint(strategy.address, WAD.mul(99))
+      await strategy.mint(owner)
       await strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15))
     })
 
+    it('borrows and invests', async () => {
+      await expect(strategy.borrowAndInvest(WAD))
+        .to.emit(strategy, 'Invest')
+      
+      expect(await base.balanceOf(strategy.address)).to.equal(WAD.mul(99))
+      almostEqual((await vault.balances(vaultId)).art, WAD.div(10), BigNumber.from(1000000))
+      almostEqual(await pool1.fyTokenReserves(), await fyToken1.balanceOf(pool1.address), BigNumber.from(1000000))
+    })
 
-    it('sets buffer limits', async () => {
-      await expect(strategy.setLimits(WAD.mul(5), WAD.mul(10), WAD.mul(15)))
-        .to.emit(strategy, 'LimitsSet')
-
-      expect((await strategy.limits()).low).to.equal(WAD.mul(5))
-      expect((await strategy.limits()).mid).to.equal(WAD.mul(10))
-      expect((await strategy.limits()).high).to.equal(WAD.mul(15))
+    describe('with an amount invested', async () => {
+      beforeEach(async () => {
+        await strategy.borrowAndInvest(WAD)
+      })
+  
+      it('divests and repays', async () => {
+        const lpTokens = await pool1.balanceOf(strategy.address)
+        await expect(strategy.divestAndRepay(lpTokens))
+          .to.emit(strategy, 'Divest')
+        
+        almostEqual(await base.balanceOf(strategy.address), WAD.mul(100), BigNumber.from(1000000))
+        almostEqual((await vault.balances(vaultId)).art, BigNumber.from(0), BigNumber.from(1000000))
+      })
     })
   })
 })

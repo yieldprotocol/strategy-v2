@@ -7,7 +7,6 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 // import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "./ERC20Rewards.sol";
-import "hardhat/console.sol";
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
@@ -413,13 +412,16 @@ contract Strategy is AccessControl, ERC20Rewards {
     {
         require(_poolDeviated() == false, "Pool reserves changed too fast");
 
-        // Find pool proportion p = fyTokenReserves/tokenReserves
+        // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
         //   (investment * p) fyToken + (investment * (1 - p)) base = investment
         //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
         //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-        // The minimum invested amount will be buffer.high - buffer.mid
-        uint256 tokenToPool = tokenInvested * base.balanceOf(address(pool)) / fyToken.balanceOf(address(pool));  // Rounds down
+
+        uint256 baseInPool = base.balanceOf(address(pool));
+        uint256 fyTokenInPool = fyToken.balanceOf(address(pool));
+        
+        uint256 tokenToPool = (tokenInvested * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
         uint256 fyTokenToPool = tokenInvested - tokenToPool;        // fyTokenToPool is rounded up
 
         base.transfer(baseJoin, fyTokenToPool);
@@ -446,12 +448,14 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Repay with fyToken as much as possible
         uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
-        toRepay += fyToken.balanceOf(address(this));    // If there is a surplus from a previous divestment event, use it.
-        
-        fyToken.transfer(address(fyToken), toRepay);
-        int128 toRepay_ = toRepay.u128().i128();
-        ladle.pour(vaultId, address(this), toRepay_, toRepay_);
+        uint256 fyTokenAvailable = fyToken.balanceOf(address(this));    // If there is a surplus from a previous divestment event, use it.
+        if (debt > 0 && fyTokenAvailable > 0) {
+            uint256 toRepay = (debt >= fyTokenAvailable) ? fyTokenAvailable : debt;
+            
+            fyToken.transfer(address(fyToken), toRepay);
+            int128 toRepay_ = toRepay.u128().i128();
+            ladle.pour(vaultId, address(this), -toRepay_, -toRepay_);   // Negative ink = withdraw, negative art = repay
+        }
 
         // Any surplus fyToken remains in the contract, locked until there is debt and a divestment event.
 
