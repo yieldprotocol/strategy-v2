@@ -64,8 +64,10 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
     event PoolDeviationRateSet(uint256 poolDeviationRate);
-    event PoolsSet(IPool[] indexed pools, bytes6[] indexed seriesIds);
-    event PoolSwapped(address pool);
+    event NextPoolSet(IPool indexed pool, bytes6 indexed seriesId);
+    event PoolEnded(address pool);
+    event PoolStarted(address pool);
+    event PoolWarmed(address pool, uint112 cachedBaseReserves, uint112 cachedFYTokenReserves);
     event Invest(uint256 minted);
     event Divest(uint256 burnt);
 
@@ -81,6 +83,9 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint32 timestamp;                        // Last time pool reserves cached locally
     }
 
+    uint32 constant public TWAP_INTERVAL = 3600; // Seconds to use on the stat pool TWAP
+    uint32 constant public START_DELAY = 3600;   // Seconds between the first cache reading for a next pool and it starting
+
     IERC20 public immutable base;                // Base token for this strategy
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
@@ -92,11 +97,14 @@ contract Strategy is AccessControl, ERC20Rewards {
     uint256 public buffer;                       // Unallocated base token in this strategy
 
     IPool public pool;                           // Current pool that this strategy invests in
-    IFYToken public fyToken;                     // Current fyToken for this strategy
-    IPool[] public pools;                        // Pools that this strategy invests in, past, present and future
-    bytes6[] public seriesIds;                   // SeriesId for each pool in the pools array
-    uint256 public poolCounter;                  // Index of the current pool in the pools array
     PoolCache public poolCache;                  // Local cache of pool reserves
+    IFYToken public fyToken;                     // Current fyToken for this strategy
+
+    IPool public nextPool;                       // Next pool that this strategy will invest in
+    PoolCache public nextPoolCache;              // Local cache of pool reserves for the next pool
+    bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
+    uint32 public nextPoolStart;                 // Time at which the next pool can be started
+
     uint256 public poolDeviationRate;            // Accepted deviation of the pool reserves, per second since last investment event
 
     constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
@@ -205,26 +213,25 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit PoolDeviationRateSet(poolDeviationRate_);
     }
 
-    /// @dev Set a queue of pools to invest in, sequentially
-    /// @notice Until the last pool reaches maturity, this can't be changed
-    function setPools(IPool[] memory pools_, bytes6[] memory seriesIds_) 
+    /// @dev Set the next pool to invest in
+    function setNextPool(IPool pool_, bytes6 seriesId_) 
         public
-        afterMaturity
         auth
     {
-        require (pools.length == 0 || poolCounter == pools.length - 1, "Pools still queued");
-        for (uint256 p = 0; p < pools_.length; p++) {
-            DataTypes.Series memory series = cauldron.series(seriesIds_[p]);
-            require(
-                series.fyToken == pools_[p].fyToken(),
-                "Mismatched seriesId"
-            );
-        }
-        pools = pools_;
-        seriesIds = seriesIds_;
-        poolCounter = type(uint256).max;
+        DataTypes.Series memory series = cauldron.series(seriesId_);
+        require(
+            series.fyToken == pool_.fyToken(),
+            "Mismatched seriesId"
+        );
 
-        emit PoolsSet(pools_, seriesIds_);
+        nextPool = pool_;
+        nextSeriesId = seriesId_;
+        
+        // Reset the pool start TWAP
+        delete nextPoolCache;
+        delete nextPoolStart;
+
+        emit NextPoolSet(pool_, seriesId_);
     }
 
     /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
@@ -238,68 +245,87 @@ contract Strategy is AccessControl, ERC20Rewards {
         _mint(to, buffer);
     }
 
-    /// @dev Swap funds to the next pool
-    /// @notice If there is no next pool, all funds are divested, and investing disabled
-    /// @notice This function is permissioned to avoid sandwiching on investing
-    function swap()
+    /// @dev Divest out of a pool once it has matured
+    function endPool()
         public
-        auth
         afterMaturity
     {
-        // Divest from the current pool
-        if (poolCounter == type(uint256).max) { // First pool in the set
-            poolCounter = 0;
-        } else {
-            // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
-            // With a bit of extra code, the collateral could be left in the vault
-            uint256 toDivest = pool.balanceOf(address(this));
-            if (toDivest > 0)
-                _divestAndRepay(toDivest);
+        // Divest fully, all debt in the vault should be repaid and collateral withdrawn into the buffer
+        // With a bit of extra code, the collateral could be left in the vault
+        uint256 toDivest = pool.balanceOf(address(this));
+        if (toDivest > 0)
+            _divestAndRepay(toDivest);
 
-            // Redeem any fyToken surplus
-            uint256 toRedeem = fyToken.balanceOf(address(this));
-            if (toRedeem > 0) {
-                fyToken.transfer(address(fyToken), toRedeem);
-                fyToken.redeem(address(this), toRedeem);
-            }
-            poolCounter++;
+        // Redeem any fyToken surplus
+        uint256 toRedeem = fyToken.balanceOf(address(this));
+        if (toRedeem > 0) {
+            fyToken.transfer(address(fyToken), toRedeem);
+            fyToken.redeem(address(this), toRedeem);
         }
 
         // Make sure the buffer is up to date
         buffer = base.balanceOf(address(this));
 
-        // Swap to the next pool
-        if (poolCounter < pools.length) {   // We swap pool and vault, borrow and invest
-            pool = pools[poolCounter];
-            fyToken = pool.fyToken();
-            bytes6 seriesId = seriesIds[poolCounter];
+        emit PoolEnded(address(pool));
 
-            if (vaultId == bytes12(0)) (vaultId, ) = ladle.build(seriesId, baseId, 0);
-            else ladle.tweak(vaultId, seriesId, baseId); // This will revert if the vault still has debt
-            
-            // Get the remote pool cache
-            (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();
-            
-            // Update the local pool cache
-            poolCache = PoolCache({
-                base: poolBase,
-                fyToken: poolFYToken,
-                timestamp: uint32(block.timestamp)
-            });
+        // Clear up
+        delete pool;
+        delete fyToken;
+        delete poolCache;
+        
+        ladle.destroy(vaultId);
+        delete vaultId;
+    }
 
-            // Invest if there is enough in the buffer
-            if (buffer > limits.high) _borrowAndInvest(buffer - limits.mid);
-        } else { // There is no next pool, we leave the funds in the buffer and disable investing
-            poolCounter = type(uint256).max;
-            pool = IPool(address(0));
-            fyToken = IFYToken(address(0));
-            vaultId = bytes12(0);
+    /// @dev Update the next pool TWAP, to avoid getting sandwiched on start pool
+    function warmPool()
+        public
+    {
+        require(nextPool != IPool(address(0)), "Next pool not set");
 
-            ladle.destroy(vaultId);
+        PoolCache memory _nextPoolCache = nextPoolCache;
+        if (_nextPoolCache.timestamp == 0) nextPoolStart = uint32(block.timestamp) + START_DELAY;
 
-            delete poolCache;
-        }
-        emit PoolSwapped(address(pool));
+        // Update the TWAP
+        (uint112 poolBase, uint112 poolFYToken, ) = nextPool.getCache();
+        uint32 elapsed = uint32(block.timestamp) - _nextPoolCache.timestamp;
+        if (elapsed > TWAP_INTERVAL) elapsed = TWAP_INTERVAL;
+        nextPoolCache = PoolCache({
+            base: (poolBase * elapsed + _nextPoolCache.base * (TWAP_INTERVAL - elapsed)) / TWAP_INTERVAL,
+            fyToken: (poolFYToken * elapsed + _nextPoolCache.fyToken * (TWAP_INTERVAL - elapsed)) / TWAP_INTERVAL,
+            timestamp: uint32(block.timestamp)
+        });
+        emit PoolWarmed(address(nextPool), nextPoolCache.base, nextPoolCache.fyToken);
+    }
+
+    /// @dev Start the strategy investments in the next pool
+    function startPool()
+        public
+    {
+        require(pool == IPool(address(0)), "Current pool exists");
+        require(nextPool != IPool(address(0)), "Next pool not set");
+
+        pool = nextPool;
+        fyToken = pool.fyToken();
+        bytes6 seriesId = nextSeriesId;
+        poolCache = nextPoolCache;      // Swap to the TWAP-updated cache
+
+        require(poolCache.timestamp + START_DELAY <= uint32(block.timestamp), "Warm up process ongoing");
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
+
+        delete nextPool;
+        delete nextSeriesId;
+        delete nextPoolCache;
+
+        (vaultId, ) = ladle.build(seriesId, baseId, 0);
+
+        // Make sure the buffer is up to date
+        buffer = base.balanceOf(address(this));
+
+        // Invest if there is enough in the buffer
+        if (buffer > limits.high) _borrowAndInvest(buffer - limits.mid);
+
+        emit PoolStarted(address(pool));
     }
 
     /// @dev Value of the strategy in base token terms
@@ -451,7 +477,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         PoolCache memory poolCache_ = poolCache;
 
         // Get the remote pool cache
-        (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();        
+        (uint112 poolBase, uint112 poolFYToken, ) = pool.getCache();    
 
         // Floor the elapsed time at 1 to make the math work if there is a second event in the same block
         uint256 elapsed = block.timestamp != poolCache_.timestamp ? block.timestamp - poolCache_.timestamp : 1;
