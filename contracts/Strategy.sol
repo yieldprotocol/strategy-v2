@@ -15,12 +15,14 @@ interface ILadle {
     function tweak(bytes12 vaultId, bytes6 seriesId, bytes6 ilkId) external returns (DataTypes.Vault memory vault);
     function destroy(bytes12 vaultId) external;
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
+    function close(bytes12 vaultId, address to, int128 ink, int128 art) external;
 }
 
 interface ICauldron {
     function assets(bytes6) external view returns (address);
     function series(bytes6) external view returns (DataTypes.Series memory);
     function balances(bytes12) external view returns (DataTypes.Balances memory);
+    function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
 }
 
 interface IPool is IERC20, IERC2612 {
@@ -98,6 +100,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     IPool public pool;                           // Current pool that this strategy invests in
     PoolCache public poolCache;                  // Local cache of pool reserves
+    bytes6 public seriesId;                      // SeriesId for the current pool in Yield v2
     IFYToken public fyToken;                     // Current fyToken for this strategy
 
     IPool public nextPool;                       // Next pool that this strategy will invest in
@@ -261,6 +264,11 @@ contract Strategy is AccessControl, ERC20Rewards {
         if (toRedeem > 0) {
             fyToken.transfer(address(fyToken), toRedeem);
             fyToken.redeem(address(this), toRedeem);
+        } else {    // There must still be debt, repay with underlying
+            uint128 debt = cauldron.balances(vaultId).art;
+            base.transfer(address(baseJoin), cauldron.debtToBase(seriesId, debt));
+            int128 debt_ = debt.i128();
+            ladle.close(vaultId, address(this), -debt_, -debt_);   // Negative ink = withdraw, negative art = repay. Takes a fyToken amount as art parameter
         }
 
         // Make sure the buffer is up to date
@@ -307,7 +315,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         pool = nextPool;
         fyToken = pool.fyToken();
-        bytes6 seriesId = nextSeriesId;
+        seriesId = nextSeriesId;
         poolCache = nextPoolCache;      // Swap to the TWAP-updated cache
 
         require(poolCache.timestamp + START_DELAY <= uint32(block.timestamp), "Warm up process ongoing");

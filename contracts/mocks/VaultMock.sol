@@ -13,6 +13,7 @@ interface ILadle {
     function build(bytes6 seriesId, bytes6 ilkId, uint8 salt) external returns (bytes12 vaultId, DataTypes.Vault memory vault);
     function destroy(bytes12 vaultId) external;
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
+    function close(bytes12 vaultId, address to, int128 ink, int128 art) external;
 }
 
 interface ICauldron {
@@ -32,8 +33,7 @@ contract VaultMock is ICauldron, ILadle {
     using CauldronMath for uint128;
 
     ICauldron public immutable override cauldron;
-    IERC20 public immutable base;
-    BaseMock private immutable base_;
+    BaseMock public immutable base;
     address public immutable baseJoin;  // = address(this)
     bytes6 public immutable baseId;      // = bytes6(1)
 
@@ -46,18 +46,19 @@ contract VaultMock is ICauldron, ILadle {
 
     constructor() {
         cauldron = ICauldron(address(this));
-        BaseMock base__ = new BaseMock();
-        base_ = base__;
-        base = IERC20(address(base__));
+        base = new BaseMock();
         baseJoin = address(this);
         baseId = bytes6(uint48(1));
     }
 
     function assets(bytes6) external view override returns (address) { return address(base); }
+    
     function joins(bytes6) external view override returns (address) { return baseJoin; }
 
+    function debtToBase(bytes6, uint128 art) external pure returns (uint128) { return art; }
+
     function addSeries(uint32 maturity_) external returns (bytes6) {
-        IFYToken fyToken = IFYToken(address(new FYTokenMock(base_, maturity_)));
+        IFYToken fyToken = IFYToken(address(new FYTokenMock(base, maturity_)));
         series[bytes6(nextSeriesId++)] = DataTypes.Series({
             fyToken: fyToken,
             maturity: maturity_,
@@ -83,12 +84,22 @@ contract VaultMock is ICauldron, ILadle {
     }
 
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external override {
-        if (ink > 0) base_.burn(address(this), uint128(ink)); // Simulate taking the base, which is also the collateral
-        if (ink < 0) base_.mint(to, uint128(-ink));
+        if (ink > 0) base.burn(address(this), uint128(ink)); // Simulate taking the base, which is also the collateral
+        if (ink < 0) base.mint(to, uint128(-ink));
         balances[vaultId].ink = balances[vaultId].ink.add(ink);
         balances[vaultId].art = balances[vaultId].art.add(art);
         address fyToken = address(series[vaults[vaultId].seriesId].fyToken);
         if (art > 0) FYTokenMock(fyToken).mint(to, uint128(art));
         if (art < 0) FYTokenMock(fyToken).burn(fyToken, uint128(-art));
+    }
+
+    function close(bytes12 vaultId, address to, int128 ink, int128 art) external override {
+        if (ink > 0) base.burn(address(this), uint128(ink)); // Simulate taking the base, which is also the collateral
+        if (ink < 0) base.mint(to, uint128(-ink));
+        balances[vaultId].ink = balances[vaultId].ink.add(ink);
+        balances[vaultId].art = balances[vaultId].art.add(art);
+        address fyToken = address(series[vaults[vaultId].seriesId].fyToken);
+        if (art > 0) revert ("Only repay debt");
+        if (art < 0) base.burn(fyToken, uint128(-art)); // We apply a 1:1 base/fyToken rate for this mock
     }
 }
