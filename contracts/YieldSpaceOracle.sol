@@ -21,13 +21,16 @@ library CastU256U112 {
  */
 contract YieldSpaceOracle is IOracleTmp {
     using CastU256U112 for uint256;
+
+    event Updated(uint112 twar, uint32 indexed twarTimestamp, uint112 ratioCumulative);
+
     uint8 public constant override decimals = 18;   // Ratio is presented with 18 decimals
     address public immutable override source;
     uint public constant PERIOD = 1 hours;
 
-    uint112 public ratioBaseAverage;
-    uint32  public blockTimestampLast;
-    uint112 public ratioBaseCumulativeLast;
+    uint112 public twar;
+    uint32  public twarTimestamp;
+    uint112 public ratioCumulative;
 
     constructor(IPool pool_) {
         source = address(pool_);
@@ -39,22 +42,20 @@ contract YieldSpaceOracle is IOracleTmp {
 
     /// @dev Update the cumulative ratioSeconds if PERIOD has passed.
     function _update() internal {
-        (uint256 baseReserves, uint256 fyTokenReserves, uint32 blockTimestamp) = IPool(source).getCache();
-        (uint32 blockTimestampLast_, uint112 ratioBaseCumulativeLast_) = (blockTimestampLast, ratioBaseCumulativeLast);
+        (uint256 baseReserves, uint256 fyTokenReserves, uint32 poolTimestamp) = IPool(source).getCache();
+        (uint32 twarTimestamp_, uint112 ratioCumulative_) = (twarTimestamp, ratioCumulative);
 
         require(baseReserves > 0 && fyTokenReserves > 0, "No liquidity in the pool");
-        uint112 ratioBaseCumulative = ((1e18 * baseReserves * blockTimestamp) / fyTokenReserves).u112();
-        uint32 timeElapsed = blockTimestamp - blockTimestampLast_;
+        uint112 poolRatioCumulative = ((1e18 * baseReserves * poolTimestamp) / fyTokenReserves).u112();
+        uint32 timeElapsed = poolTimestamp - twarTimestamp_;
+        uint112 twar_ = uint112((poolRatioCumulative - ratioCumulative_) / timeElapsed); // casting won't overflow
 
         // ensure that at least one full period has passed since the last update
-        if(timeElapsed >= PERIOD) {
-            // cumulative price is in (ratio * seconds) units so we simply wrap it after division by time elapsed
-            (ratioBaseAverage, blockTimestampLast, ratioBaseCumulativeLast) = (
-                uint112((ratioBaseCumulative - ratioBaseCumulativeLast_) / timeElapsed),  // average, casting won't overflow
-                blockTimestamp,
-                ratioBaseCumulative                                                     // last
-            );
-        }
+        if(timeElapsed >= PERIOD)
+            // cumulative ratio is in (ratio * seconds) units so we simply wrap it after division by time elapsed
+            (twar, twarTimestamp, ratioCumulative) = (twar_, twarTimestamp_, ratioCumulative_);
+
+        emit Updated(twar_, twarTimestamp_, ratioCumulative_);
     }
 
     /// @dev Return the cumulative ratioSeconds
@@ -62,7 +63,7 @@ contract YieldSpaceOracle is IOracleTmp {
         external view virtual override
         returns (uint256 ratio, uint256 updateTime)
     {
-        (ratio, updateTime) = (ratioBaseAverage, blockTimestampLast);
+        (ratio, updateTime) = (twar, twarTimestamp);
         require(updateTime != 0, "Not initialized");
     }
 
@@ -72,7 +73,7 @@ contract YieldSpaceOracle is IOracleTmp {
         returns (uint256 ratio, uint256 updateTime)
     {
         _update();
-        ratio = ratioBaseAverage;
-        updateTime = blockTimestampLast;
+        ratio = twar;
+        updateTime = twarTimestamp;
     }
 }
