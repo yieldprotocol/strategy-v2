@@ -6,7 +6,7 @@ import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
-// import "@yield-protocol/yieldspace-interfaces/IPool.sol";
+import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
@@ -22,13 +22,6 @@ interface ICauldron {
     function series(bytes6) external view returns (DataTypes.Series memory);
     function balances(bytes12) external view returns (DataTypes.Balances memory);
     function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
-}
-
-interface IPool is IERC20 {
-    function base() external view returns(IERC20);
-    function fyToken() external view returns(IFYToken);
-    function mint(address to, bool calculateFromBase, uint256 minTokensMinted) external returns (uint256, uint256, uint256);
-    function burn(address to, uint256 minBaseOut, uint256 minFYTokenOut) external returns (uint256, uint256, uint256);
 }
 
 library CastU128I128 {
