@@ -37,43 +37,47 @@ contract YieldSpaceOracle is IOracleTmp {
     }
 
     function update() external {
+        (,, uint32 poolTimestamp) = IPool(source).getCache();
+        require(twarTimestamp != poolTimestamp, "Up to date");
         _update();
     }
 
     /// @dev Update the cumulative ratioSeconds if PERIOD has passed.
     function _update() internal {
         (uint256 baseReserves, uint256 fyTokenReserves, uint32 poolTimestamp) = IPool(source).getCache();
-        (uint32 twarTimestamp_, uint112 ratioCumulative_) = (twarTimestamp, ratioCumulative);
-
         require(baseReserves > 0 && fyTokenReserves > 0, "No liquidity in the pool");
-        uint112 poolRatioCumulative = ((1e18 * baseReserves * poolTimestamp) / fyTokenReserves).u112();
+
+        (uint32 twarTimestamp_, uint112 ratioCumulative_) = (twarTimestamp, ratioCumulative);
         uint32 timeElapsed = poolTimestamp - twarTimestamp_;
-        uint112 twar_ = uint112((poolRatioCumulative - ratioCumulative_) / timeElapsed); // casting won't overflow
 
-        // ensure that at least one full period has passed since the last update
-        if(timeElapsed >= PERIOD)
-            // cumulative ratio is in (ratio * seconds) units so we simply wrap it after division by time elapsed
-            (twar, twarTimestamp, ratioCumulative) = (twar_, twarTimestamp_, ratioCumulative_);
+        if (timeElapsed > 0) {  // If we are up to date, do nothing
+            uint112 poolRatioCumulative = ((1e18 * baseReserves * poolTimestamp) / fyTokenReserves).u112();
+            uint112 twar_ = uint112((poolRatioCumulative - ratioCumulative_) / timeElapsed); // casting won't overflow
 
-        emit Updated(twar_, twarTimestamp_, ratioCumulative_);
+            // ensure that at least one full period has passed since the last update
+            if(timeElapsed >= PERIOD)
+                // cumulative ratio is in (ratio * seconds) units so we simply wrap it after division by time elapsed
+                (twar, twarTimestamp, ratioCumulative) = (twar_, twarTimestamp_, ratioCumulative_);
+
+            emit Updated(twar_, twarTimestamp_, ratioCumulative_);
+        }
     }
 
     /// @dev Return the cumulative ratioSeconds
     function peek(bytes32, bytes32, uint256)
         external view virtual override
-        returns (uint256 ratio, uint256 updateTime)
+        returns (uint256 twar_, uint256 twarTimestamp_)
     {
-        (ratio, updateTime) = (twar, twarTimestamp);
-        require(updateTime != 0, "Not initialized");
+        (twar_, twarTimestamp_) = (twar, twarTimestamp);
+        require(twarTimestamp_ != 0, "Not initialized");
     }
 
-    /// @dev Update and return the cumulative ratioSeconds
+    /// @dev Update and return the time-weighted average ratio and the time of the last update
     function get(bytes32, bytes32, uint256)
         external virtual override
-        returns (uint256 ratio, uint256 updateTime)
+        returns (uint256 twar_, uint256 twarTimestamp_)
     {
         _update();
-        ratio = twar;
-        updateTime = twarTimestamp;
+        (twar_, twarTimestamp_) = (twar, twarTimestamp);
     }
 }

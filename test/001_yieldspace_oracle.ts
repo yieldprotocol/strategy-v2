@@ -86,6 +86,10 @@ describe('Strategy - Pool Management', async function () {
 
   it('sets up testing environment', async () => {})
 
+  it('updates', async () => {
+    await expect(oracle.update()).to.emit(oracle, 'Updated')
+  })
+
   /* it('inits up', async () => {
     await base.mint(strategy.address, WAD)
     await expect(strategy.init(user1)).to.emit(strategy, 'Transfer')
