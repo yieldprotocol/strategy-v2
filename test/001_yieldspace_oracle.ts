@@ -86,10 +86,16 @@ describe('Strategy - Pool Management', async function () {
 
   it('sets up testing environment', async () => {})
 
-  it('updates', async () => {
+  it('updates the first time', async () => {
     await expect(oracle.update()).to.emit(oracle, 'Updated')
-    console.log((await pool.lastCached()).toString())
     expect(await oracle.twarTimestamp()).to.equal(await pool.lastCached())
+    const spotRatio = WAD.mul(await base.balanceOf(pool.address)).div(await fyToken.balanceOf(pool.address))
+    expect(await oracle.ratioCumulative()).to.equal(
+      spotRatio.mul(await pool.lastCached())
+    )
+    expect(await oracle.twar()).to.equal(
+      spotRatio
+    )
   })
 
   /* it('inits up', async () => {
