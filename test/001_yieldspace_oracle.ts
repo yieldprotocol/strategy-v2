@@ -98,6 +98,37 @@ describe('Strategy - Pool Management', async function () {
     )
   })
 
+  describe('with an ongoing oracle', async () => {
+    beforeEach(async () => {
+      await oracle.update()
+    })
+
+    it('updates again, without changes to reserves', async () => {
+      const spotRatio = WAD.mul(await base.balanceOf(pool.address)).div(await fyToken.balanceOf(pool.address))
+      const lastCachedBefore = await pool.lastCached()
+      const ratioCumulativeBefore = await oracle.ratioCumulative()
+      const elapsed = 3600
+      const snapshotId = await ethers.provider.send('evm_snapshot', [])
+      await ethers.provider.send('evm_mine', [lastCachedBefore + elapsed])
+
+      // Sync the pool to update pool.lastCached
+      await pool.sync()
+
+      await expect(oracle.update()).to.emit(oracle, 'Updated')
+      expect(await oracle.twarTimestamp()).to.equal(await pool.lastCached())
+
+      expect(await oracle.twar()).to.equal(
+        spotRatio
+      )
+
+      expect(await oracle.ratioCumulative()).to.equal(
+        ratioCumulativeBefore.add(spotRatio.mul(elapsed + 1)) // Not sure about the one second divergence :/
+      )
+
+      await ethers.provider.send('evm_revert', [snapshotId])
+    })
+  })
+
   /* it('inits up', async () => {
     await base.mint(strategy.address, WAD)
     await expect(strategy.init(user1)).to.emit(strategy, 'Transfer')
