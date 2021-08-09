@@ -6,6 +6,7 @@ import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
+import "@yield-protocol/vault-interfaces/IOracle.sol";
 // import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
 interface ILadle {
@@ -88,14 +89,6 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint80 high;                             // If the buffer would drop below this level, it drains to mid
     }
 
-    struct PoolCache {                           // Pool reserves and timestamp
-        uint224 ratio;                           // Ratio of fyToken reserves to base reserves, with 18 decimals
-        uint32 timestamp;                        // Last time pool reserves cached locally
-    }
-
-    uint32 constant public TWAR_INTERVAL = 3600; // Seconds to use on the stat pool TWAP
-    uint32 constant public START_DELAY = 3600;   // Seconds between the first cache reading for a next pool and it starting
-
     IERC20 public immutable base;                // Base token for this strategy
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
@@ -107,14 +100,13 @@ contract Strategy is AccessControl, ERC20Rewards {
     uint256 public buffer;                       // Unallocated base token in this strategy
 
     IPool public pool;                           // Current pool that this strategy invests in
-    PoolCache public poolCache;                  // Local cache of pool reserves
+    IOracle public oracle;                       // TWAR Oracle for the current pool
     bytes6 public seriesId;                      // SeriesId for the current pool in Yield v2
     IFYToken public fyToken;                     // Current fyToken for this strategy
 
     IPool public nextPool;                       // Next pool that this strategy will invest in
-    PoolCache public nextPoolCache;              // Local cache of pool reserves for the next pool
+    IOracle public nextOracle;                   // TWAR Oracle for the next pool
     bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
-    uint32 public nextPoolStart;                 // Time at which the next pool can be started
 
     uint256 public poolDeviationRate;            // Accepted deviation of the pool reserves, per second since last investment event
 
@@ -225,7 +217,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, bytes6 seriesId_) 
+    function setNextPool(IPool pool_, IOracle oracle_, bytes6 seriesId_) 
         public
         auth
     {
@@ -234,15 +226,16 @@ contract Strategy is AccessControl, ERC20Rewards {
             series.fyToken == pool_.fyToken(),
             "Mismatched seriesId"
         );
+        require(
+            oracle_.source == address(pool_),
+            "Mismatched oracle"
+        );
 
         nextPool = pool_;
+        nextOracle = oracle_;
         nextSeriesId = seriesId_;
-        
-        // Reset the pool start TWAP
-        delete nextPoolCache;
-        delete nextPoolStart;
 
-        emit NextPoolSet(pool_, seriesId_);
+        emit NextPoolSet(pool_, oracle_, seriesId_);
     }
 
     /// @dev Initialize this contract, minting a number of strategy tokens equal to the base balance of the strategy
@@ -286,24 +279,12 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Clear up
         delete pool;
+        delete oracle;
         delete fyToken;
-        delete poolCache;
+        delete seriesId;
         
         ladle.destroy(vaultId);
         delete vaultId;
-    }
-
-    /// @dev Update the next pool TWAP, to avoid getting sandwiched on start pool
-    function warmPool()
-        public
-    {
-        require(nextPool != IPool(address(0)), "Next pool not set");
-
-        PoolCache memory nextPoolCache_ = nextPoolCache;
-        if (nextPoolCache_.timestamp == 0) nextPoolStart = uint32(block.timestamp) + START_DELAY;
-
-        nextPoolCache = _twarUpdatedCache(nextPoolCache_, _getCache(nextPool));
-        emit PoolWarmed(address(nextPool), nextPoolCache_.ratio);
     }
 
     /// @dev Start the strategy investments in the next pool
@@ -314,16 +295,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         require(nextPool != IPool(address(0)), "Next pool not set");
 
         pool = nextPool;
+        oracle = nextOracle;
         fyToken = pool.fyToken();
         seriesId = nextSeriesId;
-        poolCache = nextPoolCache;      // Swap to the TWAP-updated cache
 
-        require(poolCache.timestamp + START_DELAY <= uint32(block.timestamp), "Warm up process ongoing");
-        require(_poolDeviated(poolCache, _getCache(pool)) == false, "Pool reserves changed too fast");
+        require(_poolDeviated() == false, "Pool reserves changed too fast"); // We have already swapped to the next pool, so we check deviation on it.
 
         delete nextPool;
+        delete nextOracle;
         delete nextSeriesId;
-        delete nextPoolCache;
 
         (vaultId, ) = ladle.build(seriesId, baseId, 0);
 
@@ -424,10 +404,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         internal
         returns (uint256 minted)
     {
-        PoolCache memory remotePoolCache = _getCache(pool);
-        PoolCache memory localPoolCache = poolCache; 
-        require(_poolDeviated(localPoolCache, remotePoolCache) == false, "Pool reserves changed too fast");
-        poolCache = _twarUpdatedCache(localPoolCache, remotePoolCache);
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
@@ -457,10 +434,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         internal
         returns (uint256 tokenDivested, uint256 fyTokenDivested)
     {
-        PoolCache memory remotePoolCache = _getCache(pool);
-        PoolCache memory localPoolCache = poolCache; 
-        require(_poolDeviated(localPoolCache, remotePoolCache) == false, "Pool reserves changed too fast");
-        poolCache = _twarUpdatedCache(localPoolCache, remotePoolCache);
+        require(_poolDeviated() == false, "Pool reserves changed too fast");
 
         // Burn lpTokens
         pool.transfer(address(pool), lpBurnt);
@@ -482,37 +456,16 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit Divest(lpBurnt);
     }
 
-    /// @dev Get a cached pool reserves in the PoolCache format
-    function _getCache(IPool pool_) internal view returns (PoolCache memory poolCache_) {
-        (uint256 poolBase, uint256 poolFYToken, uint32 lastUpdated) = pool_.getCache();
-        return PoolCache(((poolFYToken * 1e18) / poolBase).u224(), lastUpdated);
-    }
-
-    /// @dev Return a TWAR-updated pool cache
-    function _twarUpdatedCache(PoolCache memory remote, PoolCache memory local)
-        internal view
-        returns (PoolCache memory updated)
-    {
-
-        if (local.timestamp == uint32(block.timestamp)) return local; // Update only once per block
-
-        uint32 elapsed = uint32(block.timestamp) - local.timestamp;
-        if (elapsed > TWAR_INTERVAL) elapsed = TWAR_INTERVAL;
-        updated = PoolCache({
-            ratio: (remote.ratio * elapsed + local.ratio * (TWAR_INTERVAL - elapsed)) / TWAR_INTERVAL,
-            timestamp: uint32(block.timestamp)
-        });
-    }
-
-    /// @dev Check if the pool reserves have deviated more than the acceptable amount between two pool caches.
-    function _poolDeviated(PoolCache memory local, PoolCache memory remote)
+    /// @dev Check if the pool TWAR has deviated more than the permissible amount from the spot ratio.
+    /// @notice There isn't a check that the contracts link to each other, pass the parameters carefully.
+    function _poolDeviated()
         internal view
         returns (bool deviated)
     {
-        // Floor the elapsed time at 1 to make the math work if there is a second event in the same block
-        uint256 elapsed = block.timestamp != local.timestamp ? block.timestamp - local.timestamp : 1;
+        (uint256 twar, ) = oracle.get(baseId, seriesId, 0);
+        uint256 spotRatio = (1e18 * base.balanceOf(address(pool))) / fyToken.balanceOf(address(pool));
 
-        uint256 permissibleDeviation = (elapsed * local.ratio * poolDeviationRate) / (1e18 * 1e18);
-        deviated = (remote.ratio < local.ratio - permissibleDeviation || remote.ratio > local.ratio + permissibleDeviation);
+        uint256 permissibleDeviation = (twar * poolDeviationRate) / 1e18;
+        deviated = (spotRatio < twar - permissibleDeviation || spotRatio > spotRatio + permissibleDeviation);
     }
 }
