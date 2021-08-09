@@ -439,6 +439,9 @@ contract Strategy is AccessControl, ERC20Rewards {
             int128 toRepay_ = toRepay.u128().i128();
             ladle.pour(vaultId, address(this), -toRepay_, -toRepay_);   // Negative ink = withdraw, negative art = repay
         }
+        // I record that I'm getting 5 fyToken per 100 underlying
+        // If fyTokenDivested > debt, means I have no debt left and need an additional fyTokenDivested - debt in underlying, p.e. 7 fyToken left
+        // I need to burn an additional amount of LP tokens, so that I get underlying == to the fyToken left
 
         // Any surplus fyToken remains in the contract, locked until there is debt and a divestment event.
 
@@ -452,9 +455,9 @@ contract Strategy is AccessControl, ERC20Rewards {
         returns (bool deviated)
     {
         (uint256 twar, ) = oracle.get(baseId, seriesId, 0);
-        uint256 spotRatio = (1e18 * base.balanceOf(address(pool))) / fyToken.balanceOf(address(pool));
+        uint256 spotRatio = (1e27 * base.balanceOf(address(pool))) / fyToken.balanceOf(address(pool));
 
-        uint256 permissibleDeviation = (twar * poolDeviationRate) / 1e18;
+        uint256 permissibleDeviation = (twar * poolDeviationRate) / 1e27;
         deviated = (spotRatio < twar - permissibleDeviation || spotRatio > spotRatio + permissibleDeviation);
     }
 }
