@@ -121,8 +121,41 @@ describe('Strategy - Pool Management', async function () {
         spotRatio
       )
 
-      expect(await oracle.ratioCumulative()).to.equal(
-        ratioCumulativeBefore.add(spotRatio.mul(elapsed + 1)) // Not sure about the one second divergence :/
+      expect(await oracle.ratioCumulative())
+        .to.equal(ratioCumulativeBefore.add(spotRatio.mul(elapsed - 1)))
+
+      await ethers.provider.send('evm_revert', [snapshotId])
+    })
+
+    it.only('updates again, with changes to reserves', async () => {
+      console.log((WAD.mul(await base.balanceOf(pool.address)).div(await fyToken.balanceOf(pool.address))).toString())
+      const lastCachedBefore = await pool.lastCached()
+      const ratioCumulativeBefore = await oracle.ratioCumulative()
+      const elapsed = 3600
+      const snapshotId = await ethers.provider.send('evm_snapshot', [])
+      await ethers.provider.send('evm_mine', [lastCachedBefore + elapsed])
+
+      // Change the reserves and sync
+      await fyToken.mint(pool.address, WAD.mul(100000))
+      const spotRatioAfter = WAD.mul(await base.balanceOf(pool.address)).div(await fyToken.balanceOf(pool.address))
+      await pool.sync()
+
+      await expect(oracle.update()).to.emit(oracle, 'Updated')
+      expect(await oracle.twarTimestamp()).to.equal(await pool.lastCached())
+
+      almostEqual(
+        await oracle.ratioCumulative(),
+        ratioCumulativeBefore.add(spotRatioAfter.mul(elapsed)),
+        WAD.mul(20) // 20 seconds up or down
+      )
+
+      console.log((await oracle.twar()).toString())
+      console.log((WAD.mul(await base.balanceOf(pool.address)).div(await fyToken.balanceOf(pool.address))).toString())
+      console.log(((await oracle.ratioCumulative()).sub(ratioCumulativeBefore)).div(elapsed).toString())
+      almostEqual(
+        await oracle.twar(),
+        ((await oracle.ratioCumulative()).sub(ratioCumulativeBefore)).div(elapsed),
+        BigNumber.from(1000000) // To a 0.0001%
       )
 
       await ethers.provider.send('evm_revert', [snapshotId])

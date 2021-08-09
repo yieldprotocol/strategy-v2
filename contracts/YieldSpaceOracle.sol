@@ -3,6 +3,7 @@ pragma solidity 0.8.1;
 
 // import "@yield-protocol/vault-interfaces/IOracle.sol";
 import "./IOracleTmp.sol";
+import "hardhat/console.sol";
 
 interface IPool {
     function getCache() external view returns (uint112, uint112, uint32);
@@ -47,16 +48,16 @@ contract YieldSpaceOracle is IOracleTmp {
         (uint256 baseReserves, uint256 fyTokenReserves, uint32 poolTimestamp) = IPool(source).getCache();
         require(baseReserves > 0 && fyTokenReserves > 0, "No liquidity in the pool");
 
-        (uint32 twarTimestamp_, uint112 ratioCumulative_) = (twarTimestamp, ratioCumulative);
+        (uint32 twarTimestamp_, uint112 oldRatioCumulative_) = (twarTimestamp, ratioCumulative);
         uint32 timeElapsed = poolTimestamp - twarTimestamp_;
 
         // ensure that at least one full period has passed since the last update on the pool
         if(timeElapsed >= PERIOD) {
-            uint112 poolRatioCumulative = ((1e18 * baseReserves * poolTimestamp) / fyTokenReserves).u112();
+            uint112 newRatioCumulative_ = oldRatioCumulative_ + ((1e18 * baseReserves * timeElapsed) / fyTokenReserves).u112();
             // cumulative ratio is in (ratio * seconds) units so for the average we simply wrap it after division by time elapsed
-            uint112 twar_ = uint112((poolRatioCumulative - ratioCumulative_) / timeElapsed); // casting won't overflow
-            (twar, twarTimestamp, ratioCumulative) = (twar_, poolTimestamp, poolRatioCumulative);
-            emit Updated(twar_, poolTimestamp, poolRatioCumulative);
+            uint112 twar_ = uint112((newRatioCumulative_ - oldRatioCumulative_) / timeElapsed); // casting won't overflow
+            (twar, twarTimestamp, ratioCumulative) = (twar_, poolTimestamp, newRatioCumulative_);
+            emit Updated(twar_, poolTimestamp, newRatioCumulative_);
         }
     }
 
