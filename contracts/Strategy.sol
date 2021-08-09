@@ -48,6 +48,14 @@ interface IPool is IERC20, IERC2612 {
     function getCache() external view returns (uint112, uint112, uint32);
 }
 
+library CastU256U224 {
+    /// @dev Safely cast an uint256 to an int224
+    function u224(uint256 x) internal pure returns (uint224 y) {
+        require (x <= type(uint224).max, "Cast overflow");
+        y = uint224(x);
+    }
+}
+
 library CastU128I128 {
     /// @dev Safely cast an uint128 to an int128
     function i128(uint128 x) internal pure returns (int128 y) {
@@ -58,6 +66,7 @@ library CastU128I128 {
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
+    using CastU256U224 for uint256;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU128I128 for uint128;
 
@@ -69,7 +78,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     event NextPoolSet(IPool indexed pool, bytes6 indexed seriesId);
     event PoolEnded(address pool);
     event PoolStarted(address pool);
-    event PoolWarmed(address pool, uint112 cachedBaseReserves, uint112 cachedFYTokenReserves);
+    event PoolWarmed(address pool, uint224 ratio);
     event Invest(uint256 minted);
     event Divest(uint256 burnt);
 
@@ -80,8 +89,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     struct PoolCache {                           // Pool reserves and timestamp
-        uint112 base;                            // Cached base reserves
-        uint112 fyToken;                         // Cached fyToken reserves
+        uint224 ratio;                           // Ratio of fyToken reserves to base reserves, with 18 decimals
         uint32 timestamp;                        // Last time pool reserves cached locally
     }
 
@@ -295,7 +303,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         if (nextPoolCache_.timestamp == 0) nextPoolStart = uint32(block.timestamp) + START_DELAY;
 
         nextPoolCache = _twarUpdatedCache(nextPoolCache_, _getCache(nextPool));
-        emit PoolWarmed(address(nextPool), nextPoolCache_.base, nextPoolCache_.fyToken);
+        emit PoolWarmed(address(nextPool), nextPoolCache_.ratio);
     }
 
     /// @dev Start the strategy investments in the next pool
@@ -476,40 +484,35 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Get a cached pool reserves in the PoolCache format
     function _getCache(IPool pool_) internal view returns (PoolCache memory poolCache_) {
-        (uint112 poolBase, uint112 poolFYToken, uint32 lastUpdated) = pool_.getCache();
-        return PoolCache(poolBase, poolFYToken, lastUpdated);
+        (uint256 poolBase, uint256 poolFYToken, uint32 lastUpdated) = pool_.getCache();
+        return PoolCache(((poolFYToken * 1e18) / poolBase).u224(), lastUpdated);
     }
 
     /// @dev Return a TWAR-updated pool cache
-    function _twarUpdatedCache(PoolCache memory remotePoolCache, PoolCache memory localPoolCache)
+    function _twarUpdatedCache(PoolCache memory remote, PoolCache memory local)
         internal view
-        returns (PoolCache memory updatedPoolCache)
+        returns (PoolCache memory updated)
     {
 
-        if (localPoolCache.timestamp == uint32(block.timestamp)) return localPoolCache; // Update only once per block
+        if (local.timestamp == uint32(block.timestamp)) return local; // Update only once per block
 
-        uint32 elapsed = uint32(block.timestamp) - localPoolCache.timestamp;
+        uint32 elapsed = uint32(block.timestamp) - local.timestamp;
         if (elapsed > TWAR_INTERVAL) elapsed = TWAR_INTERVAL;
-        updatedPoolCache = PoolCache({
-            base: (remotePoolCache.base * elapsed + localPoolCache.base * (TWAR_INTERVAL - elapsed)) / TWAR_INTERVAL,
-            fyToken: (remotePoolCache.fyToken * elapsed + localPoolCache.fyToken * (TWAR_INTERVAL - elapsed)) / TWAR_INTERVAL,
+        updated = PoolCache({
+            ratio: (remote.ratio * elapsed + local.ratio * (TWAR_INTERVAL - elapsed)) / TWAR_INTERVAL,
             timestamp: uint32(block.timestamp)
         });
     }
 
     /// @dev Check if the pool reserves have deviated more than the acceptable amount between two pool caches.
-    function _poolDeviated(PoolCache memory localPoolCache, PoolCache memory remotePoolCache)
+    function _poolDeviated(PoolCache memory local, PoolCache memory remote)
         internal view
         returns (bool deviated)
     {
         // Floor the elapsed time at 1 to make the math work if there is a second event in the same block
-        uint256 elapsed = block.timestamp != localPoolCache.timestamp ? block.timestamp - localPoolCache.timestamp : 1;
+        uint256 elapsed = block.timestamp != local.timestamp ? block.timestamp - local.timestamp : 1;
 
-        // Calculate deviation as a linear function
-        deviated = 
-            elapsed * 1e18 * remotePoolCache.base / remotePoolCache.fyToken >
-            elapsed * (1e18 + poolDeviationRate) * localPoolCache.base / localPoolCache.fyToken ||
-            elapsed * 1e18 * remotePoolCache.fyToken / remotePoolCache.base >
-            elapsed * (1e18 + poolDeviationRate) * localPoolCache.fyToken / localPoolCache.base;
+        uint256 permissibleDeviation = (elapsed * local.ratio * poolDeviationRate) / (1e18 * 1e18);
+        deviated = (remote.ratio < local.ratio - permissibleDeviation || remote.ratio > local.ratio + permissibleDeviation);
     }
 }
