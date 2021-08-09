@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.1;
 
-import "@yield-protocol/vault-interfaces/IOracle.sol";
+// import "@yield-protocol/vault-interfaces/IOracle.sol";
+import "./IOracleTmp.sol";
 
 interface IPool {
     function getCache() external view returns (uint112, uint112, uint32);
@@ -18,12 +19,11 @@ library CastU256U112 {
 /**
  * @title YieldSpaceOracle
  */
-contract YieldSpaceOracle is IOracle {
+contract YieldSpaceOracle is IOracleTmp {
     using CastU256U112 for uint256;
-    uint8 public constant override decimals = 18;   // All prices are converted to 18 decimals
+    uint8 public constant override decimals = 18;   // Ratio is presented with 18 decimals
+    address public immutable override source;
     uint public constant PERIOD = 1 hours;
-
-    address public immutable source;
 
     uint112 public ratioBaseAverage;
     uint32  public blockTimestampLast;

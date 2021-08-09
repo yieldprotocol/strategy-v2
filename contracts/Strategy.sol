@@ -6,8 +6,9 @@ import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
-import "@yield-protocol/vault-interfaces/IOracle.sol";
+// import "@yield-protocol/vault-interfaces/IOracle.sol";
 // import "@yield-protocol/yieldspace-interfaces/IPool.sol";
+import "./IOracleTmp.sol";
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
@@ -26,27 +27,11 @@ interface ICauldron {
     function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
 }
 
-interface IPool is IERC20, IERC2612 {
+interface IPool is IERC20 {
     function base() external view returns(IERC20);
     function fyToken() external view returns(IFYToken);
-    function maturity() external view returns(uint32);
-    function getBaseBalance() external view returns(uint112);
-    function getFYTokenBalance() external view returns(uint112);
-    function retrieveBase(address to) external returns(uint128 retrieved);
-    function retrieveFYToken(address to) external returns(uint128 retrieved);
-    function sellBase(address to, uint128 min) external returns(uint128);
-    function buyBase(address to, uint128 baseOut, uint128 max) external returns(uint128);
-    function sellFYToken(address to, uint128 min) external returns(uint128);
-    function buyFYToken(address to, uint128 fyTokenOut, uint128 max) external returns(uint128);
-    function sellBasePreview(uint128 baseIn) external view returns(uint128);
-    function buyBasePreview(uint128 baseOut) external view returns(uint128);
-    function sellFYTokenPreview(uint128 fyTokenIn) external view returns(uint128);
-    function buyFYTokenPreview(uint128 fyTokenOut) external view returns(uint128);
     function mint(address to, bool calculateFromBase, uint256 minTokensMinted) external returns (uint256, uint256, uint256);
-    function mintWithBase(address to, uint256 fyTokenToBuy, uint256 minTokensMinted) external returns (uint256, uint256, uint256);
     function burn(address to, uint256 minBaseOut, uint256 minFYTokenOut) external returns (uint256, uint256, uint256);
-    function burnForBase(address to, uint256 minBaseOut) external returns (uint256, uint256);
-    function getCache() external view returns (uint112, uint112, uint32);
 }
 
 library CastU256U224 {
@@ -76,7 +61,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     event TokenIdSet(bytes6 id);
     event LimitsSet(uint80 low, uint80 mid, uint80 high);
     event PoolDeviationRateSet(uint256 poolDeviationRate);
-    event NextPoolSet(IPool indexed pool, bytes6 indexed seriesId);
+    event NextPoolSet(IPool indexed pool, IOracleTmp indexed oracle, bytes6 indexed seriesId);
     event PoolEnded(address pool);
     event PoolStarted(address pool);
     event PoolWarmed(address pool, uint224 ratio);
@@ -100,12 +85,12 @@ contract Strategy is AccessControl, ERC20Rewards {
     uint256 public buffer;                       // Unallocated base token in this strategy
 
     IPool public pool;                           // Current pool that this strategy invests in
-    IOracle public oracle;                       // TWAR Oracle for the current pool
+    IOracleTmp public oracle;                       // TWAR Oracle for the current pool
     bytes6 public seriesId;                      // SeriesId for the current pool in Yield v2
     IFYToken public fyToken;                     // Current fyToken for this strategy
 
     IPool public nextPool;                       // Next pool that this strategy will invest in
-    IOracle public nextOracle;                   // TWAR Oracle for the next pool
+    IOracleTmp public nextOracle;                   // TWAR Oracle for the next pool
     bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
 
     uint256 public poolDeviationRate;            // Accepted deviation of the pool reserves, per second since last investment event
@@ -217,17 +202,21 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, IOracle oracle_, bytes6 seriesId_) 
+    function setNextPool(IPool pool_, IOracleTmp oracle_, bytes6 seriesId_) 
         public
         auth
     {
+        require(
+            base == pool_.base(),
+            "Mismatched base"
+        );
         DataTypes.Series memory series = cauldron.series(seriesId_);
         require(
             series.fyToken == pool_.fyToken(),
             "Mismatched seriesId"
         );
         require(
-            oracle_.source == address(pool_),
+            oracle_.source() == address(pool_),
             "Mismatched oracle"
         );
 
@@ -456,10 +445,10 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit Divest(lpBurnt);
     }
 
-    /// @dev Check if the pool TWAR has deviated more than the permissible amount from the spot ratio.
+    /// @dev Check if the pool TWAR has deviated more than the permissible amount from the spot ratio, and update the TWAR.
     /// @notice There isn't a check that the contracts link to each other, pass the parameters carefully.
     function _poolDeviated()
-        internal view
+        internal
         returns (bool deviated)
     {
         (uint256 twar, ) = oracle.get(baseId, seriesId, 0);

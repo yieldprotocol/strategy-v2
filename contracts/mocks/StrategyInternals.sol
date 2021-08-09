@@ -27,11 +27,11 @@ contract StrategyInternals is Strategy {
         return _divestAndRepay(lpBurnt);
     }
 
-    /// @dev Check if the pool reserves have deviated more than the acceptable amount, and update the local pool cache.
-    function poolDeviated(Strategy.PoolCache memory localPoolCache, Strategy.PoolCache memory remotePoolCache)
-        public view
+    /// @dev Check if the pool reserves have deviated more than the acceptable amount, and update the twar.
+    function poolDeviated()
+        public
         returns (bool)
     {
-        return _poolDeviated(localPoolCache, remotePoolCache);
+        return _poolDeviated();
     }
 }
