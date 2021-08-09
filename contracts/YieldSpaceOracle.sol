@@ -50,16 +50,13 @@ contract YieldSpaceOracle is IOracleTmp {
         (uint32 twarTimestamp_, uint112 ratioCumulative_) = (twarTimestamp, ratioCumulative);
         uint32 timeElapsed = poolTimestamp - twarTimestamp_;
 
-        if (timeElapsed > 0) {  // If we are up to date, do nothing
+        // ensure that at least one full period has passed since the last update
+        if(timeElapsed >= PERIOD) {
             uint112 poolRatioCumulative = ((1e18 * baseReserves * poolTimestamp) / fyTokenReserves).u112();
+            // cumulative ratio is in (ratio * seconds) units so for the average we simply wrap it after division by time elapsed
             uint112 twar_ = uint112((poolRatioCumulative - ratioCumulative_) / timeElapsed); // casting won't overflow
-
-            // ensure that at least one full period has passed since the last update
-            if(timeElapsed >= PERIOD)
-                // cumulative ratio is in (ratio * seconds) units so we simply wrap it after division by time elapsed
-                (twar, twarTimestamp, ratioCumulative) = (twar_, twarTimestamp_, ratioCumulative_);
-
-            emit Updated(twar_, twarTimestamp_, ratioCumulative_);
+            (twar, twarTimestamp, ratioCumulative) = (twar_, poolTimestamp, poolRatioCumulative);
+            emit Updated(twar_, poolTimestamp, poolRatioCumulative);
         }
     }
 

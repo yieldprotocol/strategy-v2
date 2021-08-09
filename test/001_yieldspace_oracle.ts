@@ -88,6 +88,8 @@ describe('Strategy - Pool Management', async function () {
 
   it('updates', async () => {
     await expect(oracle.update()).to.emit(oracle, 'Updated')
+    console.log((await pool.lastCached()).toString())
+    expect(await oracle.twarTimestamp()).to.equal(await pool.lastCached())
   })
 
   /* it('inits up', async () => {
