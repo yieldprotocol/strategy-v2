@@ -28,10 +28,10 @@ contract StrategyInternals is Strategy {
     }
 
     /// @dev Check if the pool reserves have deviated more than the acceptable amount, and update the local pool cache.
-    function poolDeviated()
-        public
+    function poolDeviated(Strategy.PoolCache memory localPoolCache, Strategy.PoolCache memory remotePoolCache)
+        public view
         returns (bool)
     {
-        return _poolDeviated();
+        return _poolDeviated(localPoolCache, remotePoolCache);
     }
 }
