@@ -98,8 +98,7 @@ contract VaultMock is ICauldron, ILadle {
         if (ink < 0) base.mint(to, uint128(-ink));
         balances[vaultId].ink = balances[vaultId].ink.add(ink);
         balances[vaultId].art = balances[vaultId].art.add(art);
-        address fyToken = address(series[vaults[vaultId].seriesId].fyToken);
         if (art > 0) revert ("Only repay debt");
-        if (art < 0) base.burn(fyToken, uint128(-art)); // We apply a 1:1 base/fyToken rate for this mock
+        if (art < 0) base.burn(address(this), uint128(-art)); // We apply a 1:1 base/fyToken rate for this mock
     }
 }

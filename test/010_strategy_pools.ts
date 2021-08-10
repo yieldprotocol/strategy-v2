@@ -56,6 +56,7 @@ describe('Strategy - Pool Management', async function () {
 
   const ZERO_ADDRESS = '0x' + '0'.repeat(40)
   const ZERO_BYTES6 = '0x' + '0'.repeat(12)
+  const ZERO_BYTES12 = '0x' + '0'.repeat(24)
 
   before(async () => {
     resetChain = await ethers.provider.send("evm_snapshot", []);
@@ -294,6 +295,23 @@ describe('Strategy - Pool Management', async function () {
         afterEach(async () => {
           await ethers.provider.send("evm_revert", [snapshotId]);
         });
+
+        it.only('ends the pool - sets and deletes pool variables', async () => {
+          const vaultId = await strategy.vaultId()
+
+          await expect(strategy.endPool()).to.emit(
+            strategy,
+            'PoolEnded'
+          )
+
+          // Clear up
+          expect(await strategy.pool()).to.equal(ZERO_ADDRESS)
+          expect(await strategy.fyToken()).to.equal(ZERO_ADDRESS)
+          expect(await strategy.seriesId()).to.equal(ZERO_BYTES6)
+          expect(await strategy.cached()).to.equal(0)
+          expect((await vault.vaults(vaultId)).owner).to.equal(ZERO_ADDRESS)
+          expect(await strategy.vaultId()).to.equal(ZERO_BYTES12)
+        })
       })
     })
   })

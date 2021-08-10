@@ -212,12 +212,14 @@ contract Strategy is AccessControl, ERC20Rewards {
         (,, uint256 fyTokenDivested) = pool.burn(address(this), 0, 0); // We don't care about slippage
         
         // Repay with fyToken as much as possible
-        uint128 debt = cauldron.balances(vaultId).art;
+        DataTypes.Balances memory balances_ = cauldron.balances(vaultId);
+        uint256 debt = balances_.art;
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
         if (toRepay > 0) {
             IERC20(address(fyToken)).safeTransfer(address(fyToken), toRepay);
             int128 toRepay_ = toRepay.u128().i128();
-            ladle.pour(vaultId, address(this), -toRepay_, -toRepay_);   // Negative ink = withdraw, negative art = repay
+            ladle.pour(vaultId, address(this), 0, -toRepay_);
+            debt -= toRepay;
         }
 
         // Redeem any fyToken surplus
@@ -228,12 +230,14 @@ contract Strategy is AccessControl, ERC20Rewards {
         }
 
         // Repay with underlying if there is still any debt
-        uint256 toRepayWithBase = (debt >= fyTokenDivested) ? debt - fyTokenDivested : 0;
-        if (toRepayWithBase > 0) {
-            base.safeTransfer(address(baseJoin), cauldron.debtToBase(seriesId, toRepayWithBase.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
-            int128 debt_ = debt.i128();
-            ladle.close(vaultId, address(this), -debt_, -debt_);   // Negative ink = withdraw, negative art = repay. Takes a fyToken amount as art parameter
+        if (debt > 0) {
+            base.safeTransfer(address(baseJoin), cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
+            int128 debt_ = debt.u128().i128();
+            ladle.close(vaultId, address(this), 0, -debt_);   // Takes a fyToken amount as art parameter
         }
+
+        // Withdraw all collateral
+        ladle.pour(vaultId, address(this), -(balances_.ink.i128()), 0);
 
         emit PoolEnded(address(pool));
 
