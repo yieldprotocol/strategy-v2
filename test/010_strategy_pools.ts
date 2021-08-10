@@ -296,7 +296,7 @@ describe('Strategy - Pool Management', async function () {
           await ethers.provider.send("evm_revert", [snapshotId]);
         });
 
-        it.only('ends the pool - sets and deletes pool variables', async () => {
+        it('ends the pool - sets and deletes pool variables', async () => {
           const vaultId = await strategy.vaultId()
 
           await expect(strategy.endPool()).to.emit(
@@ -312,118 +312,31 @@ describe('Strategy - Pool Management', async function () {
           expect((await vault.vaults(vaultId)).owner).to.equal(ZERO_ADDRESS)
           expect(await strategy.vaultId()).to.equal(ZERO_BYTES12)
         })
-      })
-    })
-  })
 
-  /* it('inits up', async () => {
-    await base.mint(strategy.address, WAD)
-    await expect(strategy.init(user1)).to.emit(strategy, 'Transfer')
-    expect(await strategy.balanceOf(user1)).to.equal(WAD)
-  })
+        it('ends the pool - redeems fyToken', async () => {
+          // Make sure the pool returns more fyToken than it was borrowed
+          await fyToken1.mint(pool1.address, WAD.mul(100000))
+          await pool1.sync()
 
-  describe('once initialized', async () => {
-    beforeEach(async () => {
-      await base.mint(strategy.address, WAD)
-      await strategy.init(owner)
-    })*/
+          await expect(strategy.endPool()).to.emit(
+            strategy,
+            'PoolEnded'
+          )
 
-
-    /* describe('with a pool queue set', async () => {
-      beforeEach(async () => {
-        await strategy.setPools([pool1.address, pool2.address], [series1Id, series2Id])
-      })
-
-      it("can't set a new pool queue until done", async () => {
-        await expect(strategy.setPools([pool1.address, pool2.address], [series1Id, series1Id])).to.be.revertedWith(
-          'Pools still queued'
-        )
-      })
-
-      it('swaps to the first pool', async () => {
-        await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped')
-
-        expect(await strategy.poolCounter()).to.equal(0)
-        expect(await strategy.pool()).to.equal(pool1.address)
-        expect(await strategy.fyToken()).to.equal(fyToken1.address)
-
-        const vaultId = await strategy.vaultId()
-        const [vaultOwner, vaultSeriesId] = await vault.vaults(vaultId)
-        expect(vaultOwner).to.equal(strategy.address)
-        expect(vaultSeriesId).to.equal(series1Id)
-
-        const poolCache = await strategy.poolCache()
-        expect(poolCache.base).to.equal(await pool1.baseCached())
-        expect(poolCache.fyToken).to.equal(await pool1.fyTokenCached())
-      })
-
-      describe('with an active pool', async () => {
-        beforeEach(async () => {
-          await strategy.swap()
+          expect(await fyToken1.balanceOf(strategy.address)).to.equal(0)
         })
 
-        it("can't swap to a new pool queue until maturity", async () => {
-          await expect(strategy.swap()).to.be.revertedWith('Only after maturity')
-        })
+        it('ends the pool - repays with underlying', async () => {
+          // Make sure the pool returns less fyToken than it was borrowed
+          await base.mint(pool1.address, WAD.mul(1000000))
+          await pool1.sync()
 
-        it('can swap to the next pool after maturity', async () => {
-          const snapshotId = await ethers.provider.send('evm_snapshot', [])
-          await ethers.provider.send('evm_mine', [maturity1 + 1])
-
-          await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped')
-
-          expect(await strategy.poolCounter()).to.equal(1)
-          expect(await strategy.pool()).to.equal(pool2.address)
-          expect(await strategy.fyToken()).to.equal(fyToken2.address)
-
-          const vaultId = await strategy.vaultId()
-          const [vaultOwner, vaultSeriesId] = await vault.vaults(vaultId)
-          expect(vaultOwner).to.equal(strategy.address)
-          expect(vaultSeriesId).to.equal(series2Id)
-
-          const poolCache = await strategy.poolCache()
-          expect(poolCache.base).to.equal(await pool2.baseCached())
-          expect(poolCache.fyToken).to.equal(await pool2.fyTokenCached())
-
-          await ethers.provider.send('evm_revert', [snapshotId])
-        })
-
-        it('can swap out of the last pool', async () => {
-          const snapshotId = await ethers.provider.send('evm_snapshot', [])
-          await ethers.provider.send('evm_mine', [maturity2 + 1])
-
-          await strategy.swap() // Swap to next pool
-          await expect(strategy.swap()).to.emit(strategy, 'PoolSwapped') // Swap out of next pool
-
-          expect(await strategy.poolCounter()).to.equal(MAX)
-          expect(await strategy.pool()).to.equal(ZERO_ADDRESS)
-          expect(await strategy.fyToken()).to.equal(ZERO_ADDRESS)
-          expect(await strategy.vaultId()).to.equal('0x' + '00'.repeat(12))
-
-          const poolCache = await strategy.poolCache()
-          expect(poolCache.base).to.equal(ZERO_ADDRESS)
-          expect(poolCache.fyToken).to.equal(ZERO_ADDRESS)
-
-          await ethers.provider.send('evm_revert', [snapshotId])
-        })
-
-        it('fyToken are counted towards the strategy value', async () => {
-          await fyToken1.mint(strategy.address, WAD)
-          expect(await strategy.strategyValue()).to.equal(WAD.mul(2))
-        })
-
-        it('LP tokens are counted towards the strategy value', async () => {
-          await pool1.transfer(strategy.address, WAD)
-          expect(await strategy.strategyValue()).to.equal(
-            WAD.add(
-              (await base.balanceOf(pool1.address))
-                .add(await fyToken1.balanceOf(pool1.address))
-                .mul(await pool1.balanceOf(strategy.address))
-                .div(await pool1.totalSupply())
-            )
+          await expect(strategy.endPool()).to.emit(
+            strategy,
+            'PoolEnded'
           )
         })
       })
     })
-  }) */
+  })
 })
