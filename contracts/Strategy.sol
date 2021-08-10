@@ -7,6 +7,7 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
+import "hardhat/console.sol";
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
@@ -256,9 +257,14 @@ contract Strategy is AccessControl, ERC20Rewards {
         // minted = supply * value(deposit) / value(strategy)
         uint256 strategy = pool.balanceOf(address(this));
         uint256 deposit = strategy - cached;
+        minted = _totalSupply * deposit / strategy;
         cached += deposit;
 
-        minted = _totalSupply * deposit / strategy;
+        console.log(deposit);
+        console.log(strategy);
+        console.log(minted);
+        console.log(_totalSupply);
+
         _mint(to, minted);
     }
 

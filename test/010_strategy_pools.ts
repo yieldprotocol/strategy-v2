@@ -245,6 +245,31 @@ describe('Strategy - Pool Management', async function () {
         expect(lpMinted).not.equal(BigNumber.from(0))
         expect(strategyMinted).not.equal(BigNumber.from(0))
       })
+
+      it('burns strategy tokens', async () => {
+
+        const strategyReservesBefore = await pool1.balanceOf(strategy.address)
+        const strategySupplyBefore = await strategy.totalSupply()
+        const strategyBalance = await strategy.balanceOf(owner)
+        const strategyBurnt = strategyBalance.div(2)
+
+        await strategy.transfer(strategy.address, strategyBurnt)
+  
+        await expect(strategy.burn(user1)).to.emit(
+          strategy,
+          'Transfer'
+        )
+
+        const lpObtained = strategyReservesBefore.sub(await pool1.balanceOf(strategy.address))
+        expect(await strategy.cached()).to.equal(strategyReservesBefore.sub(lpObtained))
+        expect(await pool1.balanceOf(user1)).to.equal(lpObtained)
+
+        expect(WAD.mul(strategyBurnt).div(strategySupplyBefore))
+          .to.equal(WAD.mul(lpObtained).div(strategyReservesBefore))
+
+        // Sanity check
+        expect(lpObtained).not.equal(BigNumber.from(0))
+      })
     })
   })
 
