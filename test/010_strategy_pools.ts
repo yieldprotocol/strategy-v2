@@ -114,12 +114,36 @@ describe('Strategy - Pool Management', async function () {
       baseId,
     ])) as Strategy
 
-    await strategy.grantRoles([id('init(address)'), id('setPools(address[],bytes6[])'), id('swap()')], owner)
+    await strategy.grantRoles([id('setNextPool(address,bytes6)')], owner)
   })
 
   it('sets up testing environment', async () => {})
 
-  it('inits up', async () => {
+  it("can't set a pool with mismatched base", async () => {
+    const wrongPool = (await deployContract(ownerAcc, PoolMockArtifact, [strategy.address, fyToken1.address])) as PoolMock
+    await expect(strategy.setNextPool(wrongPool.address, series2Id)).to.be.revertedWith(
+      'Mismatched base'
+    )
+  })
+
+  it("can't set a pool with mismatched seriesId", async () => {
+    await expect(strategy.setNextPool(pool1.address, series2Id)).to.be.revertedWith(
+      'Mismatched seriesId'
+    )
+  })
+
+  it('sets next pool', async () => {
+    await expect(strategy.setNextPool(pool1.address, series1Id)).to.emit(
+      strategy,
+      'NextPoolSet'
+    )
+
+    expect(await strategy.nextPool()).to.equal(pool1.address)
+    expect(await strategy.nextSeriesId()).to.equal(series1Id)
+  })
+
+
+  /* it('inits up', async () => {
     await base.mint(strategy.address, WAD)
     await expect(strategy.init(user1)).to.emit(strategy, 'Transfer')
     expect(await strategy.balanceOf(user1)).to.equal(WAD)
@@ -129,38 +153,10 @@ describe('Strategy - Pool Management', async function () {
     beforeEach(async () => {
       await base.mint(strategy.address, WAD)
       await strategy.init(owner)
-    })
+    })*/
 
-    it("can't initialize again", async () => {
-      await base.mint(strategy.address, WAD)
-      await expect(strategy.init(user1)).to.be.revertedWith('Already initialized')
-    })
 
-    it('the strategy value is the buffer value', async () => {
-      await fyToken1.mint(strategy.address, WAD) // <-- This should be ignored
-      expect(await strategy.strategyValue()).to.equal(WAD)
-    })
-
-    it("can't set pools with mismatched seriesId", async () => {
-      await expect(strategy.setPools([pool1.address, pool2.address], [series1Id, series1Id])).to.be.revertedWith(
-        'Mismatched seriesId'
-      )
-    })
-
-    it('sets a pool queue', async () => {
-      await expect(strategy.setPools([pool1.address, pool2.address], [series1Id, series2Id])).to.emit(
-        strategy,
-        'PoolsSet'
-      )
-
-      expect(await strategy.poolCounter()).to.equal(MAX)
-      expect(await strategy.pools(0)).to.equal(pool1.address)
-      expect(await strategy.pools(1)).to.equal(pool2.address)
-      expect(await strategy.seriesIds(0)).to.equal(series1Id)
-      expect(await strategy.seriesIds(1)).to.equal(series2Id)
-    })
-
-    describe('with a pool queue set', async () => {
+    /* describe('with a pool queue set', async () => {
       beforeEach(async () => {
         await strategy.setPools([pool1.address, pool2.address], [series1Id, series2Id])
       })
@@ -256,5 +252,5 @@ describe('Strategy - Pool Management', async function () {
         })
       })
     })
-  })
+  }) */
 })
