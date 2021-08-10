@@ -53,6 +53,7 @@ describe('Strategy - Pool Management', async function () {
   let series2Id: string
 
   const ZERO_ADDRESS = '0x' + '0'.repeat(40)
+  const ZERO_BYTES6 = '0x' + '0'.repeat(12)
 
   async function fixture() {} // For now we just use this to snapshot and revert the state of the blockchain
 
@@ -157,7 +158,58 @@ describe('Strategy - Pool Management', async function () {
       await expect(strategy.startPool()).to.be.revertedWith(
         'No funds to start with'
       )
-    })  
+    })
+
+    it('starts with next pool - sets and deletes pool variables', async () => {
+      await base.mint(strategy.address, WAD)
+      await expect(strategy.startPool()).to.emit(
+        strategy,
+        'PoolStarted'
+      )
+
+      expect(await strategy.pool()).to.equal(pool1.address)
+      expect(await strategy.fyToken()).to.equal(fyToken1.address)
+      expect(await strategy.seriesId()).to.equal(series1Id)
+
+      expect(await strategy.nextPool()).to.equal(ZERO_ADDRESS)
+      expect(await strategy.nextSeriesId()).to.equal(ZERO_BYTES6)
+    })
+
+    it('starts with next pool - borrows and mints', async () => {
+      const poolBaseBefore = await base.balanceOf(pool1.address)
+      const poolFYTokenBefore = await fyToken1.balanceOf(pool1.address)
+      const poolSupplyBefore = await pool1.totalSupply()
+
+      await base.mint(strategy.address, WAD)
+      await expect(strategy.startPool()).to.emit(
+        strategy,
+        'PoolStarted'
+      )
+
+      const poolBaseAdded = (await base.balanceOf(pool1.address)).sub(poolBaseBefore)
+      const poolFYTokenAdded = (await fyToken1.balanceOf(pool1.address)).sub(poolFYTokenBefore)
+      const vaultId = await strategy.vaultId()
+
+      expect((await vault.vaults(vaultId)).owner).to.equal(strategy.address)  // The strategy created a vault
+      expect((await vault.balances(vaultId)).art).to.equal(poolFYTokenAdded)  // The strategy borrowed fyToken
+      expect(poolBaseAdded.add(poolFYTokenAdded)).to.equal(WAD)               // The strategy used all the funds
+
+      expect(await pool1.balanceOf(strategy.address)).to.equal((await pool1.totalSupply()).sub(poolSupplyBefore)) // The strategy received the LP tokens
+
+      expect(await pool1.baseReserves()).to.equal(await pool1.getBaseReserves())  // The pool used all the received funds to mint
+      almostEqual(
+        await pool1.fyTokenReserves(),
+        await pool1.getFYTokenReserves(),
+        BigNumber.from(10)
+      )  // The pool used all the received funds to mint (minus rounding in single-digit wei)
+
+      expect(await pool1.balanceOf(strategy.address)).to.equal(await strategy.cached())
+      expect(await strategy.balanceOf(owner)).to.equal(await strategy.totalSupply())
+
+      // Sanity check
+      expect(await pool1.balanceOf(strategy.address)).not.equal(BigNumber.from(0))
+      expect(await strategy.totalSupply()).not.equal(BigNumber.from(0))
+    })
   })
 
   /* it('inits up', async () => {
