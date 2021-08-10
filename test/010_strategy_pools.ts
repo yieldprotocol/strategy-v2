@@ -19,7 +19,7 @@ import { BigNumber } from 'ethers'
 
 import { ethers, waffle } from 'hardhat'
 import { expect } from 'chai'
-const { deployContract, loadFixture } = waffle
+const { deployContract } = waffle
 
 function almostEqual(x: BigNumber, y: BigNumber, p: BigNumber) {
   // Check that abs(x - y) < p:
@@ -29,6 +29,8 @@ function almostEqual(x: BigNumber, y: BigNumber, p: BigNumber) {
 
 describe('Strategy - Pool Management', async function () {
   this.timeout(0)
+  let resetChain: number;
+  let snapshotId: number;
 
   let ownerAcc: SignerWithAddress
   let owner: string
@@ -55,10 +57,8 @@ describe('Strategy - Pool Management', async function () {
   const ZERO_ADDRESS = '0x' + '0'.repeat(40)
   const ZERO_BYTES6 = '0x' + '0'.repeat(12)
 
-  async function fixture() {} // For now we just use this to snapshot and revert the state of the blockchain
-
   before(async () => {
-    await loadFixture(fixture) // This snapshots the blockchain as a side effect
+    resetChain = await ethers.provider.send("evm_snapshot", []);
     const signers = await ethers.getSigners()
     ownerAcc = signers[0]
     owner = ownerAcc.address
@@ -69,8 +69,8 @@ describe('Strategy - Pool Management', async function () {
   })
 
   after(async () => {
-    await loadFixture(fixture) // We advance the time to test maturity features, this rolls it back after the tests
-  })
+    await ethers.provider.send("evm_revert", [resetChain]);
+  });
 
   beforeEach(async () => {
     // Set up Vault and Series
@@ -216,6 +216,12 @@ describe('Strategy - Pool Management', async function () {
         await base.mint(strategy.address, WAD)
         await strategy.startPool()
       })
+
+      it("can't start another pool if the current is still active", async () => {
+        await expect(strategy.startPool()).to.be.revertedWith(
+          'Current pool exists'
+        )
+      })
   
       it('mints strategy tokens', async () => {
         const poolRatio = (WAD.mul(await base.balanceOf(pool1.address)).div(await fyToken1.balanceOf(pool1.address)))
@@ -269,6 +275,25 @@ describe('Strategy - Pool Management', async function () {
 
         // Sanity check
         expect(lpObtained).not.equal(BigNumber.from(0))
+      })
+
+      it("can't end pool before maturity", async () => {
+        await expect(strategy.endPool()).to.be.revertedWith(
+          'Only after maturity'
+        )
+      })
+
+      describe("once the pool reaches maturity", async () => {
+        beforeEach(async () => {
+          await strategy.setNextPool(pool2.address, series2Id)
+
+          snapshotId = await ethers.provider.send("evm_snapshot", []);
+          await ethers.provider.send("evm_mine", [maturity1]);
+        });
+  
+        afterEach(async () => {
+          await ethers.provider.send("evm_revert", [snapshotId]);
+        });
       })
     })
   })
