@@ -210,6 +210,42 @@ describe('Strategy - Pool Management', async function () {
       expect(await pool1.balanceOf(strategy.address)).not.equal(BigNumber.from(0))
       expect(await strategy.totalSupply()).not.equal(BigNumber.from(0))
     })
+
+    describe('with a pool started', async () => {
+      beforeEach(async () => {
+        await base.mint(strategy.address, WAD)
+        await strategy.startPool()
+      })
+  
+      it('mints strategy tokens', async () => {
+        const poolRatio = (WAD.mul(await base.balanceOf(pool1.address)).div(await fyToken1.balanceOf(pool1.address)))
+        const poolSupplyBefore = await pool1.totalSupply()
+        const strategyReservesBefore = await pool1.balanceOf(strategy.address)
+        const strategySupplyBefore = await strategy.totalSupply()
+
+        // Mint some LP tokens, and leave them in the strategy
+        await base.mint(pool1.address, WAD)
+        await fyToken1.mint(pool1.address, poolRatio) // ... * WAD / WAD
+        await pool1.mint(strategy.address, true, 0)
+  
+        await expect(strategy.mint(user1)).to.emit(
+          strategy,
+          'Transfer'
+        )
+
+        const lpMinted = (await pool1.totalSupply()).sub(poolSupplyBefore)
+        const strategyMinted = (await strategy.totalSupply()).sub(strategySupplyBefore)
+        expect(await strategy.cached()).to.equal(strategyReservesBefore.add(lpMinted))
+        expect(await strategy.balanceOf(user1)).to.equal(strategyMinted)
+
+        // expect(WAD.mul(lpMinted).div(strategyReservesBefore))
+        //   .to.equal(WAD.mul(strategyMinted).div(strategySupplyBefore))
+
+        // Sanity check
+        expect(lpMinted).not.equal(BigNumber.from(0))
+        expect(strategyMinted).not.equal(BigNumber.from(0))
+      })
+    })
   })
 
   /* it('inits up', async () => {
