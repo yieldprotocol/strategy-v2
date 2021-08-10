@@ -27,8 +27,9 @@ contract FYTokenMock is ERC20Permit {
         _burn(from, amount);
     }
 
-    function redeem(address from, address to, uint256 amount) public {
-        _burn(from, amount);
+    function redeem(address to, uint256 amount) public returns (uint256){
+        _burn(address(this), amount); // redeem would also take the fyToken from msg.sender, but we don't need that here
         base.mint(to, amount);
+        return amount;
     }
 }
