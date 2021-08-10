@@ -238,8 +238,8 @@ describe('Strategy - Pool Management', async function () {
         expect(await strategy.cached()).to.equal(strategyReservesBefore.add(lpMinted))
         expect(await strategy.balanceOf(user1)).to.equal(strategyMinted)
 
-        // expect(WAD.mul(lpMinted).div(strategyReservesBefore))
-        //   .to.equal(WAD.mul(strategyMinted).div(strategySupplyBefore))
+        expect(WAD.mul(lpMinted).div(strategyReservesBefore))
+          .to.equal(WAD.mul(strategyMinted).div(strategySupplyBefore))
 
         // Sanity check
         expect(lpMinted).not.equal(BigNumber.from(0))
