@@ -153,6 +153,52 @@ contract Strategy is AccessControl, ERC20Rewards {
         emit NextPoolSet(pool_, seriesId_);
     }
 
+    /// @dev Start the strategy investments in the next pool
+    /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
+    function startPool()
+        public
+    {
+        require(pool == IPool(address(0)), "Current pool exists");
+        require(nextPool != IPool(address(0)), "Next pool not set");
+
+        pool = nextPool;
+        fyToken = pool.fyToken();
+        seriesId = nextSeriesId;
+
+        delete nextPool;
+        delete nextSeriesId;
+
+        (vaultId, ) = ladle.build(seriesId, baseId, 0);
+
+        // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
+        // Deposit (investment * p) base to borrow (investment * p) fyToken
+        //   (investment * p) fyToken + (investment * (1 - p)) base = investment
+        //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
+        //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
+
+        uint256 baseBalance = base.balanceOf(address(this));
+        require(baseBalance > 0, "No funds to start with");
+
+        uint256 baseInPool = base.balanceOf(address(pool));
+        uint256 fyTokenInPool = fyToken.balanceOf(address(pool));
+        
+        uint256 baseToPool = (baseBalance * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
+        uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded up
+
+        // Borrow fyToken with base as collateral
+        base.safeTransfer(baseJoin, fyTokenToPool);
+        int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
+        ladle.pour(vaultId, address(pool), fyTokenToPool_, fyTokenToPool_);
+
+        // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
+        base.safeTransfer(address(pool), baseToPool);
+        (,, cached) = pool.mint(address(this), true, 0); // We don't care about slippage
+
+        if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
+
+        emit PoolStarted(address(pool));
+    }
+
     /// @dev Divest out of a pool once it has matured
     function endPool()
         public
@@ -198,52 +244,6 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         ladle.destroy(vaultId);
         delete vaultId;
-    }
-
-    /// @dev Start the strategy investments in the next pool
-    /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
-    function startPool()
-        public
-    {
-        require(pool == IPool(address(0)), "Current pool exists");
-        require(nextPool != IPool(address(0)), "Next pool not set");
-
-        pool = nextPool;
-        fyToken = pool.fyToken();
-        seriesId = nextSeriesId;
-
-        delete nextPool;
-        delete nextSeriesId;
-
-        (vaultId, ) = ladle.build(seriesId, baseId, 0);
-
-        // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
-        // Deposit (investment * p) base to borrow (investment * p) fyToken
-        //   (investment * p) fyToken + (investment * (1 - p)) base = investment
-        //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
-        //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-
-        uint256 baseBalance = base.balanceOf(address(this));
-        require(baseBalance > 0, "No funds to start with");
-
-        uint256 baseInPool = base.balanceOf(address(pool));
-        uint256 fyTokenInPool = fyToken.balanceOf(address(pool));
-        
-        uint256 baseToPool = (baseBalance * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
-        uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded up
-
-        // Borrow fyToken with base as collateral
-        base.safeTransfer(baseJoin, fyTokenToPool);
-        int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
-        ladle.pour(vaultId, address(pool), fyTokenToPool_, fyTokenToPool_);
-
-        // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
-        base.safeTransfer(address(pool), baseToPool);
-        (,, cached) = pool.mint(address(this), true, 0); // We don't care about slippage
-
-        if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
-
-        emit PoolStarted(address(pool));
     }
 
     /// @dev Mint strategy tokens.

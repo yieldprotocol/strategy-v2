@@ -132,6 +132,12 @@ describe('Strategy - Pool Management', async function () {
     )
   })
 
+  it("can't start with a pool if next pool not set", async () => {
+    await expect(strategy.startPool()).to.be.revertedWith(
+      'Next pool not set'
+    )
+  })
+
   it('sets next pool', async () => {
     await expect(strategy.setNextPool(pool1.address, series1Id)).to.emit(
       strategy,
@@ -142,6 +148,17 @@ describe('Strategy - Pool Management', async function () {
     expect(await strategy.nextSeriesId()).to.equal(series1Id)
   })
 
+  describe('with next pool set', async () => {
+    beforeEach(async () => {
+      await strategy.setNextPool(pool1.address, series1Id)
+    })
+
+    it("can't start with a pool if no funds are present", async () => {
+      await expect(strategy.startPool()).to.be.revertedWith(
+        'No funds to start with'
+      )
+    })  
+  })
 
   /* it('inits up', async () => {
     await base.mint(strategy.address, WAD)
