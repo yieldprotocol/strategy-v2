@@ -311,20 +311,20 @@ describe('Strategy - Pool Management', async function () {
             const strategySupplyBefore = await strategy.totalSupply()
             const strategyBalance = await strategy.balanceOf(owner)
             const strategyBurnt = strategyBalance.div(2)
-    
+
             await strategy.transfer(strategy.address, strategyBurnt)
-    
+
             await expect(strategy.burnForBase(user1)).to.emit(strategy, 'Transfer')
-    
+
             const baseObtained = strategyReservesBefore.sub(await base.balanceOf(strategy.address))
             expect(await base.balanceOf(user1)).to.equal(baseObtained)
-    
+
             almostEqual(
               WAD.mul(strategyBurnt).div(strategySupplyBefore),
               WAD.mul(baseObtained).div(strategyReservesBefore),
               BigNumber.from(10)
             )
-    
+
             // Sanity check
             expect(baseObtained).not.equal(BigNumber.from(0))
           })
