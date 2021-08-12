@@ -201,7 +201,7 @@ describe('Strategy - Pool Management', async function () {
       })
 
       it("can't start another pool if the current is still active", async () => {
-        await expect(strategy.startPool()).to.be.revertedWith('Current pool exists')
+        await expect(strategy.startPool()).to.be.revertedWith('Pool selected')
       })
 
       it('mints strategy tokens', async () => {
@@ -299,6 +299,35 @@ describe('Strategy - Pool Management', async function () {
           await pool1.sync()
 
           await expect(strategy.endPool()).to.emit(strategy, 'PoolEnded')
+        })
+
+        describe('with no active pools', async () => {
+          beforeEach(async () => {
+            await strategy.endPool()
+          })
+
+          it('burns strategy tokens for base', async () => {
+            const strategyReservesBefore = await base.balanceOf(strategy.address)
+            const strategySupplyBefore = await strategy.totalSupply()
+            const strategyBalance = await strategy.balanceOf(owner)
+            const strategyBurnt = strategyBalance.div(2)
+    
+            await strategy.transfer(strategy.address, strategyBurnt)
+    
+            await expect(strategy.burnForBase(user1)).to.emit(strategy, 'Transfer')
+    
+            const baseObtained = strategyReservesBefore.sub(await base.balanceOf(strategy.address))
+            expect(await base.balanceOf(user1)).to.equal(baseObtained)
+    
+            almostEqual(
+              WAD.mul(strategyBurnt).div(strategySupplyBefore),
+              WAD.mul(baseObtained).div(strategyReservesBefore),
+              BigNumber.from(10)
+            )
+    
+            // Sanity check
+            expect(baseObtained).not.equal(BigNumber.from(0))
+          })
         })
       })
     })
