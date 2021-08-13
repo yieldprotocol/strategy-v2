@@ -7,24 +7,10 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
+import "@yield-protocol/vault-interfaces/ICauldron.sol";
+import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
-
-interface ILadle {
-    function joins(bytes6) external view returns (address);
-    function cauldron() external view returns (ICauldron);
-    function build(bytes6 seriesId, bytes6 ilkId, uint8 salt) external returns (bytes12 vaultId, DataTypes.Vault memory vault);
-    function destroy(bytes12 vaultId) external;
-    function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
-    function close(bytes12 vaultId, address to, int128 ink, int128 art) external;
-}
-
-interface ICauldron {
-    function assets(bytes6) external view returns (address);
-    function series(bytes6) external view returns (DataTypes.Series memory);
-    function balances(bytes12) external view returns (DataTypes.Balances memory);
-    function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
-}
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
