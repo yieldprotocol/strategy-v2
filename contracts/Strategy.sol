@@ -5,6 +5,7 @@ import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
+import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
@@ -23,14 +24,6 @@ interface ICauldron {
     function series(bytes6) external view returns (DataTypes.Series memory);
     function balances(bytes12) external view returns (DataTypes.Balances memory);
     function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
-}
-
-library CastU128I128 {
-    /// @dev Safely cast an uint128 to an int128
-    function i128(uint128 x) internal pure returns (int128 y) {
-        require (x <= uint128(type(int128).max), "Cast overflow");
-        y = int128(x);
-    }
 }
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
