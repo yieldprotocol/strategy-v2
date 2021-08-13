@@ -1,6 +1,6 @@
 {
   "name": "@yield-protocol/strategy-v2",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "YieldSpace v2 Liquidity Providing Strategy",
   "author": "Yield Inc.",
   "files": [
@@ -25,7 +25,7 @@
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "@truffle/hdwallet-provider": "^1.0.40",
     "@types/mocha": "^8.0.0",
-    "@yield-protocol/utils-v2": "^2.2.23",
+    "@yield-protocol/utils-v2": "^2.2.24",
     "@yield-protocol/vault-interfaces": "^2.0.40",
     "@yield-protocol/yieldspace-interfaces": "^2.0.17",
     "chai": "4.2.0",
