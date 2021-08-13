@@ -54,7 +54,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         );
         base = base_;
         baseId = baseId_;
-        baseJoin = ladle_.joins(baseId_);
+        baseJoin = address(ladle_.joins(baseId_));
 
         ladle = ladle_;
         cauldron = ladle_.cauldron();
@@ -118,7 +118,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         poolNotSelected
         auth
     {
-        baseJoin = ladle.joins(baseId);
+        baseJoin = address(ladle.joins(baseId));
         emit TokenJoinReset(baseJoin);
     }
 
@@ -220,7 +220,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Repay with underlying if there is still any debt
         if (debt > 0) {
-            base.safeTransfer(address(baseJoin), cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
+            base.safeTransfer(baseJoin, cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
             int128 debt_ = debt.i128();
             ladle.close(vaultId, address(this), 0, -debt_);   // Takes a fyToken amount as art parameter
         }
