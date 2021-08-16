@@ -26,8 +26,6 @@ contract Strategy is AccessControl, ERC20Rewards {
     event NextPoolSet(IPool indexed pool, bytes6 indexed seriesId);
     event PoolEnded(address pool);
     event PoolStarted(address pool);
-    event Invest(uint256 minted);
-    event Divest(uint256 burnt);
 
     IERC20 public immutable base;                // Base token for this strategy
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
