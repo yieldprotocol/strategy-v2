@@ -86,13 +86,14 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Set a new Ladle and Cauldron
     /// @notice Use with extreme caution, only for Ladle replacements
-    function setYield(ILadle ladle_, ICauldron cauldron_)
+    function setYield(ILadle ladle_)
         external
         poolNotSelected
         auth
     {
         ladle = ladle_;
-        cauldron = ladle_.cauldron();
+        ICauldron cauldron_ = ladle_.cauldron();
+        cauldron = cauldron_;
         emit YieldSet(ladle_, cauldron_);
     }
 
