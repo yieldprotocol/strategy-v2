@@ -87,7 +87,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Set a new Ladle and Cauldron
     /// @notice Use with extreme caution, only for Ladle replacements
     function setYield(ILadle ladle_, ICauldron cauldron_)
-        public
+        external
         poolNotSelected
         auth
     {
@@ -99,7 +99,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Set a new base token id
     /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
     function setTokenId(bytes6 baseId_)
-        public
+        external
         poolNotSelected
         auth
     {
@@ -114,7 +114,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Reset the base token join
     /// @notice Use with extreme caution, only for Join replacements
     function resetTokenJoin()
-        public
+        external
         poolNotSelected
         auth
     {
@@ -124,7 +124,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Set the next pool to invest in
     function setNextPool(IPool pool_, bytes6 seriesId_) 
-        public
+        external
         auth
     {
         require(
@@ -146,7 +146,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Start the strategy investments in the next pool
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
     function startPool()
-        public
+        external
         poolNotSelected
     {
         require(nextPool != IPool(address(0)), "Next pool not set");
@@ -191,7 +191,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Divest out of a pool once it has matured
     function endPool()
-        public
+        external
         afterMaturity
     {
         uint256 toDivest = pool.balanceOf(address(this));
@@ -243,7 +243,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Mint strategy tokens.
     /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to)
-        public
+        external
         poolSelected
         returns (uint256 minted)
     {
@@ -259,7 +259,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// if the strategy has swapped to another pool.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address to)
-        public
+        external
         poolSelected
         returns (uint256 withdrawal)
     {
@@ -275,7 +275,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Burn strategy tokens to withdraw base tokens. It can be called only when a pool is not selected.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burnForBase(address to)
-        public
+        external
         poolNotSelected
         returns (uint256 withdrawal)
     {
