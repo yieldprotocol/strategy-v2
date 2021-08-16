@@ -76,7 +76,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     modifier afterMaturity() {
         require (
-            uint32(block.timestamp) > fyToken.maturity(),
+            uint32(block.timestamp) >= fyToken.maturity(),
             "Only after maturity"
         );
         _;
