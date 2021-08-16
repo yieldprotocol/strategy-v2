@@ -148,16 +148,24 @@ contract Strategy is AccessControl, ERC20Rewards {
         external
         poolNotSelected
     {
-        require(nextPool != IPool(address(0)), "Next pool not set");
+        IPool nextPool_ = nextPool;
+        require(nextPool_ != IPool(address(0)), "Next pool not set");
 
-        pool = nextPool;
-        fyToken = pool.fyToken();
-        seriesId = nextSeriesId;
+        // Caching
+        ILadle ladle_ = ladle;
+        IPool pool_ = nextPool_;
+        IFYToken fyToken_ = pool_.fyToken();
+        bytes6 seriesId_ = nextSeriesId;
+
+        pool = pool_;
+        fyToken = fyToken_;
+        seriesId = seriesId_;
 
         delete nextPool;
         delete nextSeriesId;
 
-        (vaultId, ) = ladle.build(seriesId, baseId, 0);
+        (bytes12 vaultId_, ) = ladle_.build(seriesId_, baseId, 0);
+        vaultId = vaultId_;
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
@@ -168,8 +176,8 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 baseBalance = base.balanceOf(address(this));
         require(baseBalance > 0, "No funds to start with");
 
-        uint256 baseInPool = base.balanceOf(address(pool));
-        uint256 fyTokenInPool = fyToken.balanceOf(address(pool));
+        uint256 baseInPool = base.balanceOf(address(pool_));
+        uint256 fyTokenInPool = fyToken_.balanceOf(address(pool_));
         
         uint256 baseToPool = (baseBalance * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
         uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded up
@@ -177,15 +185,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Borrow fyToken with base as collateral
         base.safeTransfer(baseJoin, fyTokenToPool);
         int128 fyTokenToPool_ = fyTokenToPool.i128();
-        ladle.pour(vaultId, address(pool), fyTokenToPool_, fyTokenToPool_);
+        ladle_.pour(vaultId, address(pool_), fyTokenToPool_, fyTokenToPool_);
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
-        base.safeTransfer(address(pool), baseToPool);
-        (,, cached) = pool.mint(address(this), true, 0); // We don't care about slippage
+        base.safeTransfer(address(pool_), baseToPool);
+        (,, cached) = pool_.mint(address(this), true, 0); // We don't care about slippage
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
-        emit PoolStarted(address(pool));
+        emit PoolStarted(address(pool_));
     }
 
     /// @dev Divest out of a pool once it has matured
@@ -193,41 +201,48 @@ contract Strategy is AccessControl, ERC20Rewards {
         external
         afterMaturity
     {
-        uint256 toDivest = pool.balanceOf(address(this));
+        // Caching
+        IPool pool_ = pool;
+        IFYToken fyToken_ = fyToken;
+        ICauldron cauldron_ = cauldron;
+        ILadle ladle_ = ladle;
+        bytes12 vaultId_ = vaultId;
+
+        uint256 toDivest = pool_.balanceOf(address(this));
         
         // Burn lpTokens
-        IERC20(address(pool)).safeTransfer(address(pool), toDivest);
-        (,, uint256 fyTokenDivested) = pool.burn(address(this), 0, 0); // We don't care about slippage
+        IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
+        (,, uint256 fyTokenDivested) = pool_.burn(address(this), 0, 0); // We don't care about slippage
         
         // Repay with fyToken as much as possible
-        DataTypes.Balances memory balances_ = cauldron.balances(vaultId);
+        DataTypes.Balances memory balances_ = cauldron_.balances(vaultId_);
         uint256 debt = balances_.art;
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
         if (toRepay > 0) {
-            IERC20(address(fyToken)).safeTransfer(address(fyToken), toRepay);
+            IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
             int128 toRepay_ = toRepay.i128();
-            ladle.pour(vaultId, address(this), 0, -toRepay_);
+            ladle_.pour(vaultId_, address(this), 0, -toRepay_);
             debt -= toRepay;
         }
 
         // Redeem any fyToken surplus
         uint256 toRedeem = fyTokenDivested - toRepay;
         if (toRedeem > 0) {
-            IERC20(address(fyToken)).safeTransfer(address(fyToken), toRedeem);
-            fyToken.redeem(address(this), toRedeem);
+            IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRedeem);
+            fyToken_.redeem(address(this), toRedeem);
         }
 
         // Repay with underlying if there is still any debt
         if (debt > 0) {
-            base.safeTransfer(baseJoin, cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
+            base.safeTransfer(baseJoin, cauldron_.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
             int128 debt_ = debt.i128();
-            ladle.close(vaultId, address(this), 0, -debt_);   // Takes a fyToken amount as art parameter
+            ladle_.close(vaultId_, address(this), 0, -debt_);   // Takes a fyToken amount as art parameter
         }
 
         // Withdraw all collateral
-        ladle.pour(vaultId, address(this), -(balances_.ink.i128()), 0);
+        ladle_.pour(vaultId_, address(this), -(balances_.ink.i128()), 0);
 
-        emit PoolEnded(address(pool));
+        emit PoolEnded(address(pool_));
 
         // Clear up
         delete pool;
@@ -235,7 +250,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         delete seriesId;
         delete cached;
         
-        ladle.destroy(vaultId);
+        ladle.destroy(vaultId_);
         delete vaultId;
     }
 
