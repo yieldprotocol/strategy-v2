@@ -262,9 +262,10 @@ contract Strategy is AccessControl, ERC20Rewards {
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
-        uint256 deposit = pool.balanceOf(address(this)) - cached;
-        minted = _totalSupply * deposit / cached;
-        cached += deposit;
+        uint256 cached_ = cached;
+        uint256 deposit = pool.balanceOf(address(this)) - cached_;
+        minted = _totalSupply * deposit / cached_;
+        cached = cached_ + deposit;
 
         _mint(to, minted);
     }
@@ -278,9 +279,10 @@ contract Strategy is AccessControl, ERC20Rewards {
         returns (uint256 withdrawal)
     {
         // strategy * burnt/supply = withdrawal
+        uint256 cached_ = cached;
         uint256 burnt = _balanceOf[address(this)];
-        withdrawal = cached * burnt / _totalSupply;
-        cached -= withdrawal;
+        withdrawal = cached_ * burnt / _totalSupply;
+        cached = cached_ - withdrawal;
 
         _burn(address(this), burnt);
         IERC20(address(pool)).safeTransfer(to, withdrawal);
