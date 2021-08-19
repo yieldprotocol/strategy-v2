@@ -79,17 +79,25 @@ contract Strategy is AccessControl, ERC20Rewards {
         cauldron = ladle_.cauldron();
     }
 
-    modifier beforeMaturity() {
+    modifier poolSelected() {
         require (
-            fyToken.maturity() >= uint32(block.timestamp),
-            "Only before maturity"
+            pool != IPool(address(0)),
+            "Pool not selected"
+        );
+        _;
+    }
+
+    modifier poolNotSelected() {
+        require (
+            pool == IPool(address(0)),
+            "Pool selected"
         );
         _;
     }
 
     modifier afterMaturity() {
         require (
-            fyToken == IFYToken(address(0)) || fyToken.maturity() < uint32(block.timestamp),
+            uint32(block.timestamp) > fyToken.maturity(),
             "Only after maturity"
         );
         _;
@@ -99,7 +107,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice Use with extreme caution, only for Ladle replacements
     function setYield(ILadle ladle_, ICauldron cauldron_)
         public
-        afterMaturity
+        poolNotSelected
         auth
     {
         ladle = ladle_;
@@ -111,7 +119,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
     function setTokenId(bytes6 baseId_)
         public
-        afterMaturity
+        poolNotSelected
         auth
     {
         require(
@@ -126,7 +134,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice Use with extreme caution, only for Join replacements
     function resetTokenJoin()
         public
-        afterMaturity
+        poolNotSelected
         auth
     {
         baseJoin = ladle.joins(baseId);
@@ -158,8 +166,8 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
     function startPool()
         public
+        poolNotSelected
     {
-        require(pool == IPool(address(0)), "Current pool exists");
         require(nextPool != IPool(address(0)), "Next pool not set");
 
         pool = nextPool;
@@ -255,7 +263,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to)
         public
-        beforeMaturity
+        poolSelected
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
@@ -271,6 +279,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address to)
         public
+        poolSelected
         returns (uint256 withdrawal)
     {
         // strategy * burnt/supply = withdrawal
@@ -280,5 +289,20 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         _burn(address(this), burnt);
         IERC20(address(pool)).safeTransfer(to, withdrawal);
+    }
+
+    /// @dev Burn strategy tokens to withdraw base tokens. It can be called only when a pool is not selected.
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
+    function burnForBase(address to)
+        public
+        poolNotSelected
+        returns (uint256 withdrawal)
+    {
+        // strategy * burnt/supply = withdrawal
+        uint256 burnt = _balanceOf[address(this)];
+        withdrawal = base.balanceOf(address(this)) * burnt / _totalSupply;
+
+        _burn(address(this), burnt);
+        base.safeTransfer(to, withdrawal);
     }
 }
