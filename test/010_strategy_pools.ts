@@ -107,10 +107,13 @@ describe('Strategy - Pool Management', async function () {
     await pool1.sync()
     await pool2.sync()
 
+    const rewards = base
+
     strategy = (await deployContract(ownerAcc, StrategyArtifact, [
       'Strategy Token',
       'STR',
       18,
+      rewards.address,
       vault.address,
       base.address,
       baseId,
