@@ -212,7 +212,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
-        (,, uint256 fyTokenDivested) = pool_.burn(address(this), 0, 0); // We don't care about slippage
+        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, 0); // We don't care about slippage
         
         // Repay with fyToken as much as possible
         DataTypes.Balances memory balances_ = cauldron_.balances(vaultId_);
