@@ -2,41 +2,22 @@
 pragma solidity 0.8.1;
 
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/TransferHelper.sol";
+import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
+import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
+import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
 import "@yield-protocol/vault-interfaces/DataTypes.sol";
+import "@yield-protocol/vault-interfaces/ICauldron.sol";
+import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
 
-interface ILadle {
-    function joins(bytes6) external view returns (address);
-    function cauldron() external view returns (ICauldron);
-    function build(bytes6 seriesId, bytes6 ilkId, uint8 salt) external returns (bytes12 vaultId, DataTypes.Vault memory vault);
-    function destroy(bytes12 vaultId) external;
-    function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
-    function close(bytes12 vaultId, address to, int128 ink, int128 art) external;
-}
-
-interface ICauldron {
-    function assets(bytes6) external view returns (address);
-    function series(bytes6) external view returns (DataTypes.Series memory);
-    function balances(bytes12) external view returns (DataTypes.Balances memory);
-    function debtToBase(bytes6 seriesId, uint128 art) external view returns (uint128);
-}
-
-library CastU128I128 {
-    /// @dev Safely cast an uint128 to an int128
-    function i128(uint128 x) internal pure returns (int128 y) {
-        require (x <= uint128(type(int128).max), "Cast overflow");
-        y = int128(x);
-    }
-}
-
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
-    using TransferHelper for IERC20;
+    using MinimalTransferHelper for IERC20;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
+    using CastU256I128 for uint256;
     using CastU128I128 for uint128;
 
     event YieldSet(ILadle ladle, ICauldron cauldron);
@@ -73,7 +54,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         );
         base = base_;
         baseId = baseId_;
-        baseJoin = ladle_.joins(baseId_);
+        baseJoin = address(ladle_.joins(baseId_));
 
         ladle = ladle_;
         cauldron = ladle_.cauldron();
@@ -137,7 +118,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         poolNotSelected
         auth
     {
-        baseJoin = ladle.joins(baseId);
+        baseJoin = address(ladle.joins(baseId));
         emit TokenJoinReset(baseJoin);
     }
 
@@ -196,7 +177,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Borrow fyToken with base as collateral
         base.safeTransfer(baseJoin, fyTokenToPool);
-        int128 fyTokenToPool_ = fyTokenToPool.u128().i128();
+        int128 fyTokenToPool_ = fyTokenToPool.i128();
         ladle.pour(vaultId, address(pool), fyTokenToPool_, fyTokenToPool_);
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
@@ -225,7 +206,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
         if (toRepay > 0) {
             IERC20(address(fyToken)).safeTransfer(address(fyToken), toRepay);
-            int128 toRepay_ = toRepay.u128().i128();
+            int128 toRepay_ = toRepay.i128();
             ladle.pour(vaultId, address(this), 0, -toRepay_);
             debt -= toRepay;
         }
@@ -239,8 +220,8 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Repay with underlying if there is still any debt
         if (debt > 0) {
-            base.safeTransfer(address(baseJoin), cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
-            int128 debt_ = debt.u128().i128();
+            base.safeTransfer(baseJoin, cauldron.debtToBase(seriesId, debt.u128())); // The strategy can't lose money due to the pool invariant, there will always be enough if we get here.
+            int128 debt_ = debt.i128();
             ladle.close(vaultId, address(this), 0, -debt_);   // Takes a fyToken amount as art parameter
         }
 
