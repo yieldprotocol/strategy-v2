@@ -43,8 +43,8 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
 
-    constructor(string memory name, string memory symbol, uint8 decimals, IERC20 rewards, ILadle ladle_, IERC20 base_, bytes6 baseId_)
-        ERC20Rewards(name, symbol, decimals, rewards)
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+        ERC20Rewards(name, symbol, decimals)
     { 
         require(
             ladle_.cauldron().assets(baseId_) == address(base_),
