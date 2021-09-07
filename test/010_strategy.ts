@@ -119,7 +119,7 @@ describe('Strategy', async function () {
       'STR',
       vault.address,
       base.address,
-      baseId,
+      baseId
     )) as unknown) as Strategy
     await strategy.deployed()
 
