@@ -43,8 +43,8 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
 
-    constructor(string memory name, string memory symbol, uint8 decimals, IERC20 rewards, ILadle ladle_, IERC20 base_, bytes6 baseId_)
-        ERC20Rewards(name, symbol, decimals, rewards)
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+        ERC20Rewards(name, symbol, decimals)
     { 
         require(
             ladle_.cauldron().assets(baseId_) == address(base_),
@@ -212,7 +212,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
-        (,, uint256 fyTokenDivested) = pool_.burn(address(this), 0, 0); // We don't care about slippage
+        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, 0); // We don't care about slippage
         
         // Repay with fyToken as much as possible
         DataTypes.Balances memory balances_ = cauldron_.balances(vaultId_);

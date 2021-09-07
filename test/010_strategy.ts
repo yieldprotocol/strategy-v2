@@ -27,7 +27,7 @@ function almostEqual(x: BigNumber, y: BigNumber, p: BigNumber) {
   expect(diff.div(p)).to.eq(0) // Hack to avoid silly conversions. BigNumber truncates decimals off.
 }
 
-describe('Strategy - Pool Management', async function () {
+describe('Strategy', async function () {
   this.timeout(0)
   let resetChain: number
   let snapshotId: number
@@ -107,13 +107,10 @@ describe('Strategy - Pool Management', async function () {
     await pool1.sync()
     await pool2.sync()
 
-    const rewards = base
-
     strategy = (await deployContract(ownerAcc, StrategyArtifact, [
       'Strategy Token',
       'STR',
       18,
-      rewards.address,
       vault.address,
       base.address,
       baseId,
