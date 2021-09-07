@@ -1,19 +1,17 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signer-with-address'
 
 import { constants, id } from '@yield-protocol/utils-v2'
-const { WAD, MAX256 } = constants
-const MAX = MAX256
+const { WAD } = constants
 
-import StrategyArtifact from '../artifacts/contracts/Strategy.sol/Strategy.json'
 import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultMock.json'
 import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
-import ERC20MockArtifact from '../artifacts/contracts/mocks/ERC20Mock.sol/ERC20Mock.json'
 
-import { ERC20Mock as ERC20, ERC20Mock } from '../typechain/ERC20Mock'
+import { SafeERC20Namer } from '../typechain/SafeERC20Namer'
 import { Strategy } from '../typechain/Strategy'
 import { VaultMock } from '../typechain/VaultMock'
 import { PoolMock } from '../typechain/PoolMock'
 import { FYTokenMock } from '../typechain/FYTokenMock'
+import { ERC20Mock as ERC20, ERC20Mock } from '../typechain/ERC20Mock'
 
 import { BigNumber } from 'ethers'
 
@@ -107,14 +105,23 @@ describe('Strategy', async function () {
     await pool1.sync()
     await pool2.sync()
 
-    strategy = (await deployContract(ownerAcc, StrategyArtifact, [
+    const SafeERC20NamerFactory = await ethers.getContractFactory('SafeERC20Namer')
+    const safeERC20NamerLibrary = ((await SafeERC20NamerFactory.deploy()) as unknown) as SafeERC20Namer
+    await safeERC20NamerLibrary.deployed()
+
+    const strategyFactory = await ethers.getContractFactory('Strategy', {
+      libraries: {
+        SafeERC20Namer: safeERC20NamerLibrary.address,
+      },
+    })
+    strategy = ((await strategyFactory.deploy(
       'Strategy Token',
       'STR',
-      18,
       vault.address,
       base.address,
       baseId,
-    ])) as Strategy
+    )) as unknown) as Strategy
+    await strategy.deployed()
 
     await strategy.grantRoles([id('setNextPool(address,bytes6)')], owner)
   })

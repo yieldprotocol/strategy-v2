@@ -2,6 +2,7 @@
 pragma solidity 0.8.6;
 
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
+import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
 import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
@@ -12,6 +13,8 @@ import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
+import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import "hardhat/console.sol";
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
@@ -43,9 +46,9 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
 
-    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IERC20 base_, bytes6 baseId_)
-        ERC20Rewards(name, symbol, decimals)
-    { 
+    constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
+    { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
         require(
             ladle_.cauldron().assets(baseId_) == address(base_),
             "Mismatched baseId"
