@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.1;
+pragma solidity 0.8.6;
 import "@yield-protocol/utils-v2/contracts/access/Ownable.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20.sol";
@@ -42,7 +42,7 @@ contract PoolMock is ERC20, Ownable() {
     using RMath for uint128;
 
     event Trade(uint32 maturity, address indexed from, address indexed to, int256 baseAmount, int256 fyTokenAmount);
-    event Liquidity(uint32 maturity, address indexed from, address indexed to, int256 baseAmount, int256 fyTokenAmount, int256 poolTokenAmount);
+    event Liquidity(uint32 maturity, address indexed from, address indexed to, address fyTokenTo, int256 baseAmount, int256 fyTokenAmount, int256 poolTokenAmount);
 
     IERC20 public base;
     IFYToken public fyToken;
@@ -119,7 +119,7 @@ contract PoolMock is ERC20, Ownable() {
         _update(baseReserves + uint112(baseIn), fyTokenReserves + uint112(fyTokenIn));
         _mint(to, tokensMinted);
 
-        emit Liquidity(0, msg.sender, to, -int256(baseIn), -int256(fyTokenIn), int256(tokensMinted));
+        emit Liquidity(0, msg.sender, to, address(0), -int256(baseIn), -int256(fyTokenIn), int256(tokensMinted));
     }
 
     function mintWithBase(address to, uint256 fyTokenToBuy, uint256 minTokensMinted)
@@ -130,7 +130,7 @@ contract PoolMock is ERC20, Ownable() {
         return mint(to, false, minTokensMinted);
     }
 
-    function burn(address to, uint256 minBaseOut, uint256 minFYTokenOut)
+    function burn(address baseTo, address fyTokenTo, uint256 minBaseOut, uint256 minFYTokenOut)
         public
         returns (uint256 tokensBurned, uint256 baseOut, uint256 fyTokenOut) {
         tokensBurned = _balanceOf[address(this)];
@@ -143,17 +143,17 @@ contract PoolMock is ERC20, Ownable() {
 
         _update(baseReserves - uint112(baseOut), fyTokenReserves - uint112(fyTokenOut));
         _burn(address(this), tokensBurned);
-        base.transfer(to, baseOut);
-        fyToken.transfer(to, fyTokenOut);
+        base.transfer(baseTo, baseOut);
+        fyToken.transfer(fyTokenTo, fyTokenOut);
 
-        emit Liquidity(0, msg.sender, to, int256(baseOut), int256(fyTokenOut), -int(tokensBurned));
+        emit Liquidity(0, msg.sender, baseTo, fyTokenTo, int256(baseOut), int256(fyTokenOut), -int(tokensBurned));
     }
 
     function burnForBase(address to, uint256 minBaseOut)
         public
         returns (uint256 tokensBurned, uint256 baseOut)
     {
-        (uint256 tokensBurned_, uint256 baseFromBurn, ) = burn(address(this), 0, 0);
+        (uint256 tokensBurned_, uint256 baseFromBurn, ) = burn(address(this), address(this), 0, 0);
         uint256 baseBought = sellFYToken(address(this), 0);
         require (baseFromBurn + baseBought >= minBaseOut, "Pool: Not enough base tokens obtained");
         base.transfer(to, baseFromBurn + baseBought);
