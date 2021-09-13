@@ -203,7 +203,7 @@ describe('Strategy', async function () {
 
     describe('with a pool started', async () => {
       beforeEach(async () => {
-        await base.mint(strategy.address, WAD)
+        await base.mint(strategy.address, WAD.mul(1000))
         await strategy.startPool()
       })
 
