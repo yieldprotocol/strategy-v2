@@ -18,7 +18,7 @@ interface ILadle {
 
 interface ICauldron {
     function assets(bytes6) external view returns (address);
-    // function series(bytes6) external view returns (DataTypes.Series memory);
+    function debt(bytes6 baseId, bytes6 ilkId) external view returns (DataTypes.Debt memory);
 }
 
 library CauldronMath {
@@ -52,8 +52,12 @@ contract VaultMock is ICauldron, ILadle {
     }
 
     function assets(bytes6) external view override returns (address) { return address(base); }
-    
+
     function joins(bytes6) external view override returns (address) { return baseJoin; }
+
+    function debt(bytes6, bytes6) external pure override returns (DataTypes.Debt memory) {
+        return DataTypes.Debt({ max: 1000000, min: 1, dec: 18, sum: 0 });
+    }
 
     function debtToBase(bytes6, uint128 art) external pure returns (uint128) { return art; }
 

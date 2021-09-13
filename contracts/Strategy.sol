@@ -13,8 +13,6 @@ import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 
-import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
-import "hardhat/console.sol";
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
@@ -221,8 +219,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Repay with fyToken as much as possible
         DataTypes.Balances memory balances_ = cauldron_.balances(vaultId_);
-        uint256 debt = balances_.art;
+        uint256 debt = balances_.art;        
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
+
+        // But, if hitting dust, repay less
+        DataTypes.Debt memory limits_ = cauldron.debt(seriesId, baseId);
+        uint128 dust = limits_.min * uint128(10) ** limits_.dec;
+        if (debt > toRepay && debt - toRepay < dust) toRepay = debt - dust;
+
+        // Repay with fyToken
         if (toRepay > 0) {
             IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
             int128 toRepay_ = toRepay.i128();
