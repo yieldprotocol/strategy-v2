@@ -220,4 +220,8 @@ contract PoolMock is ERC20, Ownable() {
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, int128(baseIn), -int128(fyTokenOut));
         return baseIn;
     }
+
+    function invariant() public view returns(uint128) {
+        return uint128(block.timestamp);
+    }
 }

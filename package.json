@@ -1,6 +1,6 @@
 {
   "name": "@yield-protocol/strategy-v2",
-  "version": "0.10.0-rc2",
+  "version": "0.10.0-rc3",
   "description": "YieldSpace v2 Liquidity Providing Strategy",
   "author": "Yield Inc.",
   "files": [
@@ -27,7 +27,7 @@
     "@types/mocha": "^8.0.0",
     "@yield-protocol/utils-v2": "^2.3.0-rc3",
     "@yield-protocol/vault-interfaces": "^2.0.41",
-    "@yield-protocol/yieldspace-interfaces": "^2.3.0-rc0",
+    "@yield-protocol/yieldspace-interfaces": "^2.3.0-rc3",
     "chai": "4.2.0",
     "chai-bignumber": "3.0.0",
     "ethereumjs-util": "^7.0.9",
