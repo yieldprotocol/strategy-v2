@@ -223,7 +223,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 toRepay = (debt >= fyTokenDivested) ? fyTokenDivested : debt;
 
         // But, if hitting dust, repay less
-        DataTypes.Debt memory limits_ = cauldron.debt(seriesId, baseId);
+        DataTypes.Debt memory limits_ = cauldron.debt(baseId, baseId);
         uint128 dust = limits_.min * uint128(10) ** limits_.dec;
         if (debt > toRepay && debt - toRepay < dust) toRepay = debt - dust;
 

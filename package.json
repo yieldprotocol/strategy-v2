@@ -1,6 +1,6 @@
 {
   "name": "@yield-protocol/strategy-v2",
-  "version": "0.10.0-rc4",
+  "version": "0.11.0-rc0",
   "description": "YieldSpace v2 Liquidity Providing Strategy",
   "author": "Yield Inc.",
   "files": [
