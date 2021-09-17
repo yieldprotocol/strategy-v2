@@ -182,10 +182,7 @@ describe('Strategy', async function () {
 
       const poolBaseAdded = (await base.balanceOf(pool1.address)).sub(poolBaseBefore)
       const poolFYTokenAdded = (await fyToken1.balanceOf(pool1.address)).sub(poolFYTokenBefore)
-      const vaultId = await strategy.vaultId()
 
-      expect((await vault.vaults(vaultId)).owner).to.equal(strategy.address) // The strategy created a vault
-      expect((await vault.balances(vaultId)).art).to.equal(poolFYTokenAdded) // The strategy borrowed fyToken
       expect(poolBaseAdded.add(poolFYTokenAdded)).to.equal(WAD) // The strategy used all the funds
 
       expect(await pool1.balanceOf(strategy.address)).to.equal((await pool1.totalSupply()).sub(poolSupplyBefore)) // The strategy received the LP tokens
@@ -277,8 +274,6 @@ describe('Strategy', async function () {
         })
 
         it('ends the pool - sets and deletes pool variables', async () => {
-          const vaultId = await strategy.vaultId()
-
           await expect(strategy.endPool()).to.emit(strategy, 'PoolEnded')
 
           // Clear up
@@ -286,8 +281,6 @@ describe('Strategy', async function () {
           expect(await strategy.fyToken()).to.equal(ZERO_ADDRESS)
           expect(await strategy.seriesId()).to.equal(ZERO_BYTES6)
           expect(await strategy.cached()).to.equal(0)
-          expect((await vault.vaults(vaultId)).owner).to.equal(ZERO_ADDRESS)
-          expect(await strategy.vaultId()).to.equal(ZERO_BYTES12)
         })
 
         it('ends the pool - redeems fyToken', async () => {
