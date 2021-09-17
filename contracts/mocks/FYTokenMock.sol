@@ -27,7 +27,11 @@ contract FYTokenMock is ERC20Permit {
         _burn(from, amount);
     }
 
-    function redeem(address to, uint256 amount) public returns (uint256){
+    function mintWithUnderlying(address to, uint256 amount) public {
+        _mint(to, amount); // It would be neat to check that the underlying has been sent to the join
+    }
+
+    function redeem(address to, uint256 amount) public returns (uint256) {
         _burn(address(this), amount); // redeem would also take the fyToken from msg.sender, but we don't need that here
         base.mint(to, amount);
         return amount;
