@@ -144,13 +144,17 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Start the strategy investments in the next pool
+    /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
-    function startPool()
+    function startPool(uint256 minRatio)
         external
+        auth
         poolNotSelected
     {
         IPool nextPool_ = nextPool;
         require(nextPool_ != IPool(address(0)), "Next pool not set");
+        (uint112 baseCached, uint112 fyTokenCached, ) = nextPool_.getCache();
+        require (fyTokenCached == 0 || uint256(baseCached) * 1e18 / fyTokenCached >= minRatio, "Reserves ratio too low");
 
         // Caching
         IPool pool_ = nextPool_;

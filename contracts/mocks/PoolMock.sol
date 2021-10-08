@@ -48,11 +48,8 @@ contract PoolMock is ERC20, Ownable() {
     IFYToken public fyToken;
     uint128 constant public rate = 105e25; // 5%
 
-    uint112 public baseReserves;
-    uint112 public fyTokenReserves;
-
-    uint112 public baseCached;
-    uint112 public fyTokenCached;
+    uint256 public baseCached;
+    uint256 public fyTokenCached;
     uint32 public lastCached;
 
     constructor(IERC20 base_, IFYToken fyToken_) ERC20("Pool", "Pool", 18) {
@@ -61,16 +58,15 @@ contract PoolMock is ERC20, Ownable() {
     }
 
     function sync() public {
-        _update(uint112(base.balanceOf(address(this))), uint112(fyToken.balanceOf(address(this))));
+        _update(base.balanceOf(address(this)), fyToken.balanceOf(address(this)) + _totalSupply);
     }
 
-    function _update(uint112 baseReserves_, uint112 fyTokenReserves_) public {
-        (baseReserves, fyTokenReserves) = (baseReserves_, fyTokenReserves_);
-        (baseCached, fyTokenCached, lastCached) = (baseReserves_, fyTokenReserves_, uint32(block.timestamp));
+    function _update(uint256 baseCached_, uint256 fyTokenCached_) public {
+        (baseCached, fyTokenCached, lastCached) = (baseCached_, fyTokenCached_, uint32(block.timestamp));
     }
 
     function getCache() public view returns (uint112, uint112, uint32) {
-        return (baseCached, fyTokenCached, lastCached);
+        return (uint112(baseCached), uint112(fyTokenCached), lastCached);
     }
 
     function getBaseReserves() public view returns(uint128) {
@@ -78,14 +74,14 @@ contract PoolMock is ERC20, Ownable() {
     }
 
     function getFYTokenReserves() public view returns(uint128) {
-        return uint128(fyToken.balanceOf(address(this)));
+        return uint128(fyToken.balanceOf(address(this)) + _totalSupply);
     }
 
     function retrieveBase(address to)
         public
         returns(uint128 surplus)
     {
-        surplus = getBaseReserves() - baseReserves;
+        surplus = uint128(getBaseReserves() - baseCached);
         require(
             base.transfer(to, surplus),
             "Pool: Base transfer failed"
@@ -96,7 +92,7 @@ contract PoolMock is ERC20, Ownable() {
         public payable
         returns(uint128 surplus)
     {
-        surplus = getFYTokenReserves() - fyTokenReserves;
+        surplus = uint128(getFYTokenReserves() - fyTokenCached);
         require(
             fyToken.transfer(to, surplus),
             "Pool: FYToken transfer failed"
@@ -106,18 +102,19 @@ contract PoolMock is ERC20, Ownable() {
     function mint(address to, bool, uint256 minTokensMinted)
         public
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 tokensMinted) {
-        baseIn = uint128(base.balanceOf(address(this))) - baseReserves;
+        (uint256 baseCached_, uint256 fyTokenRealCached_) = (baseCached, fyTokenCached - _totalSupply);
+        baseIn = uint128(base.balanceOf(address(this))) - baseCached_;
         if (_totalSupply > 0) {
-            tokensMinted = (_totalSupply * baseIn) / baseReserves;
-            fyTokenIn = (fyTokenReserves * tokensMinted) / _totalSupply;
+            tokensMinted = (_totalSupply * baseIn) / baseCached_;
+            fyTokenIn = (fyTokenRealCached_ * tokensMinted) / _totalSupply;
         } else {
             tokensMinted = baseIn;
         }
-        require(fyTokenReserves + fyTokenIn <= fyToken.balanceOf(address(this)), "Pool: Not enough fyToken in");
+        require (fyTokenRealCached_ + fyTokenIn <= fyToken.balanceOf(address(this)), "Pool: Not enough fyToken in");
         require (tokensMinted >= minTokensMinted, "Pool: Not enough tokens minted");
 
-        _update(baseReserves + uint112(baseIn), fyTokenReserves + uint112(fyTokenIn));
         _mint(to, tokensMinted);
+        _update(baseCached_ + baseIn, fyTokenRealCached_ + fyTokenIn + _totalSupply);
 
         emit Liquidity(0, msg.sender, to, address(0), -int256(baseIn), -int256(fyTokenIn), int256(tokensMinted));
     }
@@ -133,16 +130,17 @@ contract PoolMock is ERC20, Ownable() {
     function burn(address baseTo, address fyTokenTo, uint256 minBaseOut, uint256 minFYTokenOut)
         public
         returns (uint256 tokensBurned, uint256 baseOut, uint256 fyTokenOut) {
+        (uint256 baseCached_, uint256 fyTokenRealCached_) = (baseCached, fyTokenCached - _totalSupply);
         tokensBurned = _balanceOf[address(this)];
 
-        baseOut = (tokensBurned * baseReserves) / _totalSupply;
-        fyTokenOut = (tokensBurned * fyTokenReserves) / _totalSupply;
+        baseOut = (tokensBurned * baseCached_) / _totalSupply;
+        fyTokenOut = (tokensBurned * fyTokenRealCached_) / _totalSupply;
 
         require (baseOut >= minBaseOut, "Pool: Not enough base tokens obtained");
         require (fyTokenOut >= minFYTokenOut, "Pool: Not enough fyToken obtained");
 
-        _update(baseReserves - uint112(baseOut), fyTokenReserves - uint112(fyTokenOut));
         _burn(address(this), tokensBurned);
+        _update(baseCached_ - baseOut, fyTokenRealCached_ - fyTokenOut + _totalSupply);
         base.transfer(baseTo, baseOut);
         fyToken.transfer(fyTokenTo, fyTokenOut);
 
@@ -178,11 +176,11 @@ contract PoolMock is ERC20, Ownable() {
     }
 
     function sellBase(address to, uint128 min) public returns(uint128) {
-        uint128 baseIn = uint128(base.balanceOf(address(this))) - baseReserves;
+        uint128 baseIn = uint128(base.balanceOf(address(this)) - baseCached);
         uint128 fyTokenOut = sellBasePreview(baseIn);
         require(fyTokenOut >= min, "Pool: Not enough fyToken obtained");
         fyToken.transfer(to, fyTokenOut);
-        _update(uint112(base.balanceOf(address(this))), uint112(fyTokenReserves - fyTokenOut));
+        _update(baseCached + baseIn, fyTokenCached - fyTokenOut);
 
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, int128(baseIn), -int128(fyTokenOut));
         return fyTokenOut;
@@ -191,20 +189,20 @@ contract PoolMock is ERC20, Ownable() {
     function buyBase(address to, uint128 baseOut, uint128 max) public returns(uint128) {
         uint128 fyTokenIn = buyBasePreview(baseOut);
         require(fyTokenIn <= max, "Pool: Too much fyToken in");
-        require(fyTokenReserves + fyTokenIn <= getFYTokenReserves(), "Pool: Not enough fyToken in");
+        require(fyTokenCached + fyTokenIn <= getFYTokenReserves(), "Pool: Not enough fyToken in");
         base.transfer(to, baseOut);
-        _update(uint112(baseReserves - baseOut), uint112(fyTokenReserves + fyTokenIn));
+        _update(baseCached - baseOut, fyTokenCached + fyTokenIn);
 
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, -int128(baseOut), int128(fyTokenIn));
         return fyTokenIn;
     }
 
     function sellFYToken(address to, uint128 min) public returns(uint128) {
-        uint128 fyTokenIn = uint128(fyToken.balanceOf(address(this))) - fyTokenReserves;
+        uint128 fyTokenIn = uint128(fyToken.balanceOf(address(this)) - fyTokenCached);
         uint128 baseOut = sellFYTokenPreview(fyTokenIn);
         require(baseOut >= min, "Pool: Not enough base obtained");
         base.transfer(to, baseOut);
-        _update(uint112(baseReserves - baseOut), uint112(fyToken.balanceOf(address(this))));
+        _update(baseCached - baseOut, fyTokenCached + fyTokenIn);
 
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, -int128(baseOut), int128(fyTokenIn));
         return baseOut;
@@ -213,9 +211,9 @@ contract PoolMock is ERC20, Ownable() {
     function buyFYToken(address to, uint128 fyTokenOut, uint128 max) public returns(uint128) {
         uint128 baseIn = buyFYTokenPreview(fyTokenOut);
         require(baseIn <= max, "Pool: Too much base token in");
-        require(baseReserves + baseIn <= getBaseReserves(), "Pool: Not enough base token in");
+        require(baseCached + baseIn <= getBaseReserves(), "Pool: Not enough base token in");
         fyToken.transfer(to, fyTokenOut);
-        _update(uint112(baseReserves + baseIn), uint112(fyTokenReserves - fyTokenOut));
+        _update(baseCached + baseIn, fyTokenCached - fyTokenOut);
 
         emit Trade(uint32(fyToken.maturity()), msg.sender, to, int128(baseIn), -int128(fyTokenOut));
         return baseIn;
