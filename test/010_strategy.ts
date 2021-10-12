@@ -118,7 +118,7 @@ describe('Strategy', async function () {
     const PoolExtensionsFactory = await ethers.getContractFactory('PoolExtensions', {
       libraries: {
         YieldMath: yieldMathLibrary.address,
-      },      
+      },
     })
     const poolExtensionsLibrary = ((await PoolExtensionsFactory.deploy()) as unknown) as PoolExtensions
     await poolExtensionsLibrary.deployed()
