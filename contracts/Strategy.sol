@@ -12,11 +12,13 @@ import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
+import "@yield-protocol/yieldspace-v2/contracts/extensions/PoolExtensions.sol";
 
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
     using MinimalTransferHelper for IERC20;
+    using PoolExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
@@ -153,8 +155,6 @@ contract Strategy is AccessControl, ERC20Rewards {
     {
         IPool nextPool_ = nextPool;
         require(nextPool_ != IPool(address(0)), "Next pool not set");
-        (uint112 baseCached, uint112 fyTokenCached, ) = nextPool_.getCache();
-        require (fyTokenCached == 0 || uint256(baseCached) * 1e18 / fyTokenCached >= minRatio, "Reserves ratio too low");
 
         // Caching
         IPool pool_ = nextPool_;
@@ -189,7 +189,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
-        (,, cached) = pool_.mint(address(this), true, 0); // We don't care about slippage, because the strategy holds to maturity and profits from sandwiching
+        (,, cached) = pool_.mint(address(this), true, minRatio);
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
@@ -210,7 +210,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
-        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, 0); // We don't care about slippage, because the strategy holds to maturity and profits from sandwiching
+        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0); // We don't care about slippage, because the strategy holds to maturity
         
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);

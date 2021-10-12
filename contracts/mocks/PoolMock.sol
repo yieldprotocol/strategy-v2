@@ -44,6 +44,11 @@ contract PoolMock is ERC20, Ownable() {
     event Trade(uint32 maturity, address indexed from, address indexed to, int256 baseAmount, int256 fyTokenAmount);
     event Liquidity(uint32 maturity, address indexed from, address indexed to, address fyTokenTo, int256 baseAmount, int256 fyTokenAmount, int256 poolTokenAmount);
 
+    int128 public ts = int128(uint128(uint256((1 << 64))) / 315576000); // 1 / Seconds in 10 years, in 64.64
+    int128 public g1 = int128(uint128(uint256((950 << 64))) / 1000); // To be used when selling base to the pool. All constants are `ufixed`, to divide them they must be converted to uint256
+    int128 public g2 = int128(uint128(uint256((1000 << 64))) / 950); // To be used when selling fyToken to the pool. All constants are `ufixed`, to divide them they must be converted to uint256
+    uint32 public maturity = 1640995199;
+
     IERC20 public base;
     IFYToken public fyToken;
     uint128 constant public rate = 105e25; // 5%
@@ -69,11 +74,11 @@ contract PoolMock is ERC20, Ownable() {
         return (uint112(baseCached), uint112(fyTokenCached), lastCached);
     }
 
-    function getBaseReserves() public view returns(uint128) {
+    function getBaseBalance() public view returns(uint128) {
         return uint128(base.balanceOf(address(this)));
     }
 
-    function getFYTokenReserves() public view returns(uint128) {
+    function getFYTokenBalance() public view returns(uint128) {
         return uint128(fyToken.balanceOf(address(this)) + _totalSupply);
     }
 
@@ -81,7 +86,7 @@ contract PoolMock is ERC20, Ownable() {
         public
         returns(uint128 surplus)
     {
-        surplus = uint128(getBaseReserves() - baseCached);
+        surplus = uint128(getBaseBalance() - baseCached);
         require(
             base.transfer(to, surplus),
             "Pool: Base transfer failed"
@@ -92,26 +97,29 @@ contract PoolMock is ERC20, Ownable() {
         public payable
         returns(uint128 surplus)
     {
-        surplus = uint128(getFYTokenReserves() - fyTokenCached);
+        surplus = uint128(getFYTokenBalance() - fyTokenCached);
         require(
             fyToken.transfer(to, surplus),
             "Pool: FYToken transfer failed"
         );
     }
 
-    function mint(address to, bool, uint256 minTokensMinted)
+    function mint(address to, bool, uint256 minRatio)
         public
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 tokensMinted) {
         (uint256 baseCached_, uint256 fyTokenRealCached_) = (baseCached, fyTokenCached - _totalSupply);
-        baseIn = uint128(base.balanceOf(address(this))) - baseCached_;
+        uint256 baseBalance = base.balanceOf(address(this));
+        uint256 fyTokenBalance = fyToken.balanceOf(address(this));
+        require (fyTokenBalance == 0 || baseBalance * 1e18 / fyTokenBalance >= minRatio, "Reserves ratio too low");
+
+        baseIn = uint128(baseBalance) - baseCached_;
         if (_totalSupply > 0) {
             tokensMinted = (_totalSupply * baseIn) / baseCached_;
             fyTokenIn = (fyTokenRealCached_ * tokensMinted) / _totalSupply;
         } else {
             tokensMinted = baseIn;
         }
-        require (fyTokenRealCached_ + fyTokenIn <= fyToken.balanceOf(address(this)), "Pool: Not enough fyToken in");
-        require (tokensMinted >= minTokensMinted, "Pool: Not enough tokens minted");
+        require (fyTokenRealCached_ + fyTokenIn <= fyTokenBalance, "Pool: Not enough fyToken in");
 
         _mint(to, tokensMinted);
         _update(baseCached_ + baseIn, fyTokenRealCached_ + fyTokenIn + _totalSupply);
@@ -119,25 +127,26 @@ contract PoolMock is ERC20, Ownable() {
         emit Liquidity(0, msg.sender, to, address(0), -int256(baseIn), -int256(fyTokenIn), int256(tokensMinted));
     }
 
-    function mintWithBase(address to, uint256 fyTokenToBuy, uint256 minTokensMinted)
+    function mintWithBase(address to, uint256 fyTokenToBuy, uint256 minRatio)
         public
         returns (uint256, uint256, uint256)
     {
         buyFYToken(address(this), fyTokenToBuy.u128(), type(uint128).max);
-        return mint(to, false, minTokensMinted);
+        return mint(to, false, minRatio);
     }
 
-    function burn(address baseTo, address fyTokenTo, uint256 minBaseOut, uint256 minFYTokenOut)
+    function burn(address baseTo, address fyTokenTo, uint256 minRatio)
         public
         returns (uint256 tokensBurned, uint256 baseOut, uint256 fyTokenOut) {
         (uint256 baseCached_, uint256 fyTokenRealCached_) = (baseCached, fyTokenCached - _totalSupply);
+        uint256 baseBalance = base.balanceOf(address(this));
+        uint256 fyTokenBalance = fyToken.balanceOf(address(this));
+        require (fyTokenBalance == 0 || baseBalance * 1e18 / fyTokenBalance >= minRatio, "Reserves ratio too low");
+
         tokensBurned = _balanceOf[address(this)];
 
         baseOut = (tokensBurned * baseCached_) / _totalSupply;
         fyTokenOut = (tokensBurned * fyTokenRealCached_) / _totalSupply;
-
-        require (baseOut >= minBaseOut, "Pool: Not enough base tokens obtained");
-        require (fyTokenOut >= minFYTokenOut, "Pool: Not enough fyToken obtained");
 
         _burn(address(this), tokensBurned);
         _update(baseCached_ - baseOut, fyTokenRealCached_ - fyTokenOut + _totalSupply);
@@ -147,13 +156,16 @@ contract PoolMock is ERC20, Ownable() {
         emit Liquidity(0, msg.sender, baseTo, fyTokenTo, int256(baseOut), int256(fyTokenOut), -int(tokensBurned));
     }
 
-    function burnForBase(address to, uint256 minBaseOut)
+    function burnForBase(address to, uint256 minRatio)
         public
         returns (uint256 tokensBurned, uint256 baseOut)
     {
-        (uint256 tokensBurned_, uint256 baseFromBurn, ) = burn(address(this), address(this), 0, 0);
+        (uint256 tokensBurned_, uint256 baseFromBurn, ) = burn(address(this), address(this), 0);
+        uint256 baseBalance = base.balanceOf(address(this));
+        uint256 fyTokenBalance = fyToken.balanceOf(address(this));
+        require (baseBalance * 1e18 / fyTokenBalance >= minRatio, "Reserves ratio too low");
+
         uint256 baseBought = sellFYToken(address(this), 0);
-        require (baseFromBurn + baseBought >= minBaseOut, "Pool: Not enough base tokens obtained");
         base.transfer(to, baseFromBurn + baseBought);
 
         return (tokensBurned_, baseFromBurn + baseBought);
@@ -189,7 +201,7 @@ contract PoolMock is ERC20, Ownable() {
     function buyBase(address to, uint128 baseOut, uint128 max) public returns(uint128) {
         uint128 fyTokenIn = buyBasePreview(baseOut);
         require(fyTokenIn <= max, "Pool: Too much fyToken in");
-        require(fyTokenCached + fyTokenIn <= getFYTokenReserves(), "Pool: Not enough fyToken in");
+        require(fyTokenCached + fyTokenIn <= getFYTokenBalance(), "Pool: Not enough fyToken in");
         base.transfer(to, baseOut);
         _update(baseCached - baseOut, fyTokenCached + fyTokenIn);
 
@@ -211,7 +223,7 @@ contract PoolMock is ERC20, Ownable() {
     function buyFYToken(address to, uint128 fyTokenOut, uint128 max) public returns(uint128) {
         uint128 baseIn = buyFYTokenPreview(fyTokenOut);
         require(baseIn <= max, "Pool: Too much base token in");
-        require(baseCached + baseIn <= getBaseReserves(), "Pool: Not enough base token in");
+        require(baseCached + baseIn <= getBaseBalance(), "Pool: Not enough base token in");
         fyToken.transfer(to, fyTokenOut);
         _update(baseCached + baseIn, fyTokenCached - fyTokenOut);
 

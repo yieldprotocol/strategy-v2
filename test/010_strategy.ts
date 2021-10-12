@@ -7,6 +7,8 @@ import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultM
 import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
 
 import { SafeERC20Namer } from '../typechain/SafeERC20Namer'
+import { PoolExtensions } from '../typechain/PoolExtensions'
+import { YieldMath } from '../typechain/YieldMath'
 import { Strategy } from '../typechain/Strategy'
 import { VaultMock } from '../typechain/VaultMock'
 import { PoolMock } from '../typechain/PoolMock'
@@ -109,9 +111,22 @@ describe('Strategy', async function () {
     const safeERC20NamerLibrary = ((await SafeERC20NamerFactory.deploy()) as unknown) as SafeERC20Namer
     await safeERC20NamerLibrary.deployed()
 
+    const YieldMathFactory = await ethers.getContractFactory('YieldMath')
+    const yieldMathLibrary = ((await YieldMathFactory.deploy()) as unknown) as YieldMath
+    await yieldMathLibrary.deployed()
+
+    const PoolExtensionsFactory = await ethers.getContractFactory('PoolExtensions', {
+      libraries: {
+        YieldMath: yieldMathLibrary.address,
+      },      
+    })
+    const poolExtensionsLibrary = ((await PoolExtensionsFactory.deploy()) as unknown) as PoolExtensions
+    await poolExtensionsLibrary.deployed()
+
     const strategyFactory = await ethers.getContractFactory('Strategy', {
       libraries: {
         SafeERC20Namer: safeERC20NamerLibrary.address,
+        PoolExtensions: poolExtensionsLibrary.address,
       },
     })
     strategy = ((await strategyFactory.deploy(
@@ -160,7 +175,9 @@ describe('Strategy', async function () {
 
     it("can't start with a pool if minimum ratio not met", async () => {
       await base.mint(strategy.address, WAD)
-      await expect(strategy.startPool(WAD)).to.be.revertedWith('Reserves ratio too low')
+      const ratio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
+      await fyToken1.mint(pool1.address, WAD)
+      await expect(strategy.startPool(ratio)).to.be.revertedWith('Reserves ratio too low')
     })
 
     it('starts with next pool - sets and deletes pool variables', async () => {
@@ -190,8 +207,8 @@ describe('Strategy', async function () {
 
       expect(await pool1.balanceOf(strategy.address)).to.equal((await pool1.totalSupply()).sub(poolSupplyBefore)) // The strategy received the LP tokens
 
-      expect(await pool1.baseCached()).to.equal(await pool1.getBaseReserves()) // The pool used all the received funds to mint
-      almostEqual(await pool1.fyTokenCached(), await pool1.getFYTokenReserves(), BigNumber.from(10)) // The pool used all the received funds to mint (minus rounding in single-digit wei)
+      expect(await pool1.baseCached()).to.equal(await pool1.getBaseBalance()) // The pool used all the received funds to mint
+      almostEqual(await pool1.fyTokenCached(), await pool1.getFYTokenBalance(), BigNumber.from(10)) // The pool used all the received funds to mint (minus rounding in single-digit wei)
 
       expect(await pool1.balanceOf(strategy.address)).to.equal(await strategy.cached())
       expect(await strategy.balanceOf(owner)).to.equal(await strategy.totalSupply())
