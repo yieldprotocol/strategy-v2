@@ -1,7 +1,8 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signer-with-address'
 
 import { constants, id } from '@yield-protocol/utils-v2'
-const { WAD } = constants
+const { WAD, MAX256 } = constants
+const MAX = MAX256
 
 import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultMock.json'
 import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
@@ -100,8 +101,8 @@ describe('Strategy', async function () {
     pool2 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken2.address])) as PoolMock
     await base.mint(pool1.address, WAD.mul(1000000))
     await base.mint(pool2.address, WAD.mul(1000000))
-    await pool1.mint(owner, true, 0)
-    await pool2.mint(owner, true, 0)
+    await pool1.mint(owner, true, 0, MAX)
+    await pool2.mint(owner, true, 0, MAX)
     await fyToken1.mint(pool1.address, WAD.mul(100000))
     await fyToken2.mint(pool2.address, WAD.mul(100000))
     await pool1.sync()
@@ -138,7 +139,7 @@ describe('Strategy', async function () {
     )) as unknown) as Strategy
     await strategy.deployed()
 
-    await strategy.grantRoles([id('setNextPool(address,bytes6)'), id('startPool(uint256)')], owner)
+    await strategy.grantRoles([id('setNextPool(address,bytes6)'), id('startPool(uint256,uint256)')], owner)
   })
 
   it("can't set a pool with mismatched base", async () => {
@@ -154,7 +155,7 @@ describe('Strategy', async function () {
   })
 
   it("can't start with a pool if next pool not set", async () => {
-    await expect(strategy.startPool(0)).to.be.revertedWith('Next pool not set')
+    await expect(strategy.startPool(0, MAX)).to.be.revertedWith('Next pool not set')
   })
 
   it('sets next pool', async () => {
@@ -170,19 +171,26 @@ describe('Strategy', async function () {
     })
 
     it("can't start with a pool if no funds are present", async () => {
-      await expect(strategy.startPool(0)).to.be.revertedWith('No funds to start with')
+      await expect(strategy.startPool(0, MAX)).to.be.revertedWith('No funds to start with')
     })
 
     it("can't start with a pool if minimum ratio not met", async () => {
       await base.mint(strategy.address, WAD)
-      const ratio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
+      const minRatio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
       await fyToken1.mint(pool1.address, WAD)
-      await expect(strategy.startPool(ratio)).to.be.revertedWith('Reserves ratio too low')
+      await expect(strategy.startPool(minRatio, MAX)).to.be.revertedWith('Pool: Reserves ratio changed')
+    })
+
+    it("can't start with a pool if maximum ratio exceeded", async () => {
+      await base.mint(strategy.address, WAD)
+      const maxRatio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
+      await base.mint(pool1.address, WAD)
+      await expect(strategy.startPool(0, maxRatio)).to.be.revertedWith('Pool: Reserves ratio changed')
     })
 
     it('starts with next pool - sets and deletes pool variables', async () => {
       await base.mint(strategy.address, WAD)
-      await expect(strategy.startPool(0)).to.emit(strategy, 'PoolStarted')
+      await expect(strategy.startPool(0, MAX)).to.emit(strategy, 'PoolStarted')
 
       expect(await strategy.pool()).to.equal(pool1.address)
       expect(await strategy.fyToken()).to.equal(fyToken1.address)
@@ -198,7 +206,7 @@ describe('Strategy', async function () {
       const poolSupplyBefore = await pool1.totalSupply()
 
       await base.mint(strategy.address, WAD)
-      await expect(strategy.startPool(0)).to.emit(strategy, 'PoolStarted')
+      await expect(strategy.startPool(0, MAX)).to.emit(strategy, 'PoolStarted')
 
       const poolBaseAdded = (await base.balanceOf(pool1.address)).sub(poolBaseBefore)
       const poolFYTokenAdded = (await fyToken1.balanceOf(pool1.address)).sub(poolFYTokenBefore)
@@ -221,11 +229,11 @@ describe('Strategy', async function () {
     describe('with a pool started', async () => {
       beforeEach(async () => {
         await base.mint(strategy.address, WAD.mul(1000))
-        await strategy.startPool(0)
+        await strategy.startPool(0, MAX)
       })
 
       it("can't start another pool if the current is still active", async () => {
-        await expect(strategy.startPool(0)).to.be.revertedWith('Pool selected')
+        await expect(strategy.startPool(0, MAX)).to.be.revertedWith('Pool selected')
       })
 
       it('mints strategy tokens', async () => {
@@ -237,7 +245,7 @@ describe('Strategy', async function () {
         // Mint some LP tokens, and leave them in the strategy
         await base.mint(pool1.address, WAD)
         await fyToken1.mint(pool1.address, poolRatio) // ... * WAD / WAD
-        await pool1.mint(strategy.address, true, 0)
+        await pool1.mint(strategy.address, true, 0, MAX)
 
         await expect(strategy.mint(user1)).to.emit(strategy, 'Transfer')
 

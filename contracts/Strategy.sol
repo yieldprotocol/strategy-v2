@@ -147,8 +147,9 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     /// @dev Start the strategy investments in the next pool
     /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
+    /// @param maxRatio Maximum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
-    function startPool(uint256 minRatio)
+    function startPool(uint256 minRatio, uint256 maxRatio)
         external
         auth
         poolNotSelected
@@ -189,7 +190,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
-        (,, cached) = pool_.mint(address(this), true, minRatio);
+        (,, cached) = pool_.mint(address(this), true, minRatio, maxRatio);
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
@@ -210,7 +211,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
-        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0); // We don't care about slippage, because the strategy holds to maturity
+        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
         
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);
