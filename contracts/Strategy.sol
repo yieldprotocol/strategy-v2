@@ -85,6 +85,19 @@ contract Strategy is AccessControl, ERC20Rewards {
         _;
     }
 
+    /// @dev Set a rewards token.
+    /// @notice Careful, this can only be done once.
+    /// Do not set any token whose balance is tracked by this contract (strategy, pool, base or fyToken)
+    /// without careful consideration of the effects. Claiming would mess up with the tracked balances.
+    function setRewardsToken(IERC20 rewardsToken_)
+        external
+        auth
+    {
+        require(rewardsToken == IERC20(address(0)), "Rewards token already set");
+        rewardsToken = rewardsToken_;
+        emit RewardsTokenSet(rewardsToken_);
+    }
+
     /// @dev Set a new Ladle and Cauldron
     /// @notice Use with extreme caution, only for Ladle replacements
     function setYield(ILadle ladle_)
