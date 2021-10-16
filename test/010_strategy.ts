@@ -8,7 +8,7 @@ import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultM
 import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
 
 import { SafeERC20Namer } from '../typechain/SafeERC20Namer'
-import { PoolExtensions } from '../typechain/PoolExtensions'
+import { YieldMathExtensions } from '../typechain/YieldMathExtensions'
 import { YieldMath } from '../typechain/YieldMath'
 import { Strategy } from '../typechain/Strategy'
 import { VaultMock } from '../typechain/VaultMock'
@@ -116,18 +116,18 @@ describe('Strategy', async function () {
     const yieldMathLibrary = ((await YieldMathFactory.deploy()) as unknown) as YieldMath
     await yieldMathLibrary.deployed()
 
-    const PoolExtensionsFactory = await ethers.getContractFactory('PoolExtensions', {
+    const YieldMathExtensionsFactory = await ethers.getContractFactory('YieldMathExtensions', {
       libraries: {
         YieldMath: yieldMathLibrary.address,
       },
     })
-    const poolExtensionsLibrary = ((await PoolExtensionsFactory.deploy()) as unknown) as PoolExtensions
-    await poolExtensionsLibrary.deployed()
+    const YieldMathExtensionsLibrary = ((await YieldMathExtensionsFactory.deploy()) as unknown) as YieldMathExtensions
+    await YieldMathExtensionsLibrary.deployed()
 
     const strategyFactory = await ethers.getContractFactory('Strategy', {
       libraries: {
         SafeERC20Namer: safeERC20NamerLibrary.address,
-        PoolExtensions: poolExtensionsLibrary.address,
+        YieldMathExtensions: YieldMathExtensionsLibrary.address,
       },
     })
     strategy = ((await strategyFactory.deploy(

@@ -12,13 +12,13 @@ import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-v2/contracts/extensions/PoolExtensions.sol";
+import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.sol";
 
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
     using MinimalTransferHelper for IERC20;
-    using PoolExtensions for IPool;
+    using YieldMathExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
