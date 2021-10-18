@@ -46,6 +46,7 @@ describe('Strategy', async function () {
   let base: ERC20
   let fyToken1: FYTokenMock
   let fyToken2: FYTokenMock
+  let poolFactory: PoolFactory
   let pool1: Pool
   let pool2: Pool
 
@@ -122,7 +123,7 @@ describe('Strategy', async function () {
     const PoolFactoryFactory = await ethers.getContractFactory('PoolFactory', {
         libraries: poolLibs,
     })
-    const poolFactory = ((await PoolFactoryFactory.deploy()) as unknown) as PoolFactory
+    poolFactory = ((await PoolFactoryFactory.deploy()) as unknown) as PoolFactory
     await poolFactory.deployed()
     await poolFactory.grantRoles([id('createPool(address,address)')], owner)
 
@@ -133,8 +134,8 @@ describe('Strategy', async function () {
 
     await base.mint(pool1.address, WAD.mul(1000000))
     await base.mint(pool2.address, WAD.mul(1000000))
-    await pool1.mint(owner, true, 0, MAX)
-    await pool2.mint(owner, true, 0, MAX)
+    await pool1.mint(owner, ZERO_ADDRESS, 0, MAX)
+    await pool2.mint(owner, ZERO_ADDRESS, 0, MAX)
     await fyToken1.mint(pool1.address, WAD.mul(100000))
     await fyToken2.mint(pool2.address, WAD.mul(100000))
     await pool1.sync()
@@ -158,13 +159,12 @@ describe('Strategy', async function () {
     await strategy.grantRoles([id('setNextPool(address,bytes6)'), id('startPool(uint256,uint256)')], owner)
   })
 
-  /* it("can't set a pool with mismatched base", async () => {
-    const wrongPool = (await deployContract(ownerAcc, PoolArtifact, [
-      strategy.address,
-      fyToken1.address,
-    ])) as Pool
+  it("can't set a pool with mismatched base", async () => {
+    await poolFactory.createPool(strategy.address, fyToken1.address)
+    const wrongPool = await ethers.getContractAt('Pool', await poolFactory.getPool(strategy.address, fyToken1.address), ownerAcc) as Pool
+
     await expect(strategy.setNextPool(wrongPool.address, series2Id)).to.be.revertedWith('Mismatched base')
-  }) */
+  })
 
   it("can't set a pool with mismatched seriesId", async () => {
     await expect(strategy.setNextPool(pool1.address, series2Id)).to.be.revertedWith('Mismatched seriesId')
@@ -227,7 +227,8 @@ describe('Strategy', async function () {
       const poolBaseAdded = (await base.balanceOf(pool1.address)).sub(poolBaseBefore)
       const poolFYTokenAdded = (await fyToken1.balanceOf(pool1.address)).sub(poolFYTokenBefore)
 
-      expect(poolBaseAdded.add(poolFYTokenAdded)).to.equal(WAD) // The strategy used all the funds
+      expect(poolBaseAdded.add(poolFYTokenAdded)).to.equal(WAD.sub(1)) // The strategy used all the funds, except one wei for rounding
+      expect(await base.balanceOf(strategy.address)).to.equal(1) // The strategy remained with the one wei from rounding
 
       expect(await pool1.balanceOf(strategy.address)).to.equal((await pool1.totalSupply()).sub(poolSupplyBefore)) // The strategy received the LP tokens
 
@@ -254,16 +255,16 @@ describe('Strategy', async function () {
         await expect(strategy.startPool(0, MAX)).to.be.revertedWith('Pool selected')
       })
 
-      it('mints strategy tokens', async () => {
+      it.only('mints strategy tokens', async () => {
         const poolRatio = WAD.mul(await base.balanceOf(pool1.address)).div(await fyToken1.balanceOf(pool1.address))
         const poolSupplyBefore = await pool1.totalSupply()
         const strategyReservesBefore = await pool1.balanceOf(strategy.address)
         const strategySupplyBefore = await strategy.totalSupply()
 
         // Mint some LP tokens, and leave them in the strategy
-        await base.mint(pool1.address, WAD)
-        await fyToken1.mint(pool1.address, poolRatio) // ... * WAD / WAD
-        await pool1.mint(strategy.address, true, 0, MAX)
+        await base.mint(pool1.address, WAD.mul(poolRatio))
+        await fyToken1.mint(pool1.address, WAD)
+        await pool1.mint(strategy.address, ZERO_ADDRESS, 0, MAX)
 
         await expect(strategy.mint(user1)).to.emit(strategy, 'Transfer')
 
