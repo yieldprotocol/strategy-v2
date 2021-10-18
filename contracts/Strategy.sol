@@ -17,7 +17,7 @@ import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.s
 
 library DivUp {
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
-        c = (a + b) / b;
+        a % b == 0 ? c = a / b : c = a / b + 1;
     }
 }
 
