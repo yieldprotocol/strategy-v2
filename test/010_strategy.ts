@@ -118,19 +118,27 @@ describe('Strategy', async function () {
     // Set up YieldSpace
     const poolLibs = {
       YieldMath: yieldMath.address,
-      SafeERC20Namer: safeERC20Namer.address
+      SafeERC20Namer: safeERC20Namer.address,
     }
     const PoolFactoryFactory = await ethers.getContractFactory('PoolFactory', {
-        libraries: poolLibs,
+      libraries: poolLibs,
     })
     poolFactory = ((await PoolFactoryFactory.deploy()) as unknown) as PoolFactory
     await poolFactory.deployed()
     await poolFactory.grantRoles([id('createPool(address,address)')], owner)
 
     await poolFactory.createPool(base.address, fyToken1.address)
-    pool1 = await ethers.getContractAt('Pool', await poolFactory.getPool(base.address, fyToken1.address), ownerAcc) as Pool
+    pool1 = (await ethers.getContractAt(
+      'Pool',
+      await poolFactory.getPool(base.address, fyToken1.address),
+      ownerAcc
+    )) as Pool
     await poolFactory.createPool(base.address, fyToken2.address)
-    pool2 = await ethers.getContractAt('Pool', await poolFactory.getPool(base.address, fyToken2.address), ownerAcc) as Pool
+    pool2 = (await ethers.getContractAt(
+      'Pool',
+      await poolFactory.getPool(base.address, fyToken2.address),
+      ownerAcc
+    )) as Pool
 
     await base.mint(pool1.address, WAD.mul(1000000))
     await base.mint(pool2.address, WAD.mul(1000000))
@@ -161,7 +169,11 @@ describe('Strategy', async function () {
 
   it("can't set a pool with mismatched base", async () => {
     await poolFactory.createPool(strategy.address, fyToken1.address)
-    const wrongPool = await ethers.getContractAt('Pool', await poolFactory.getPool(strategy.address, fyToken1.address), ownerAcc) as Pool
+    const wrongPool = (await ethers.getContractAt(
+      'Pool',
+      await poolFactory.getPool(strategy.address, fyToken1.address),
+      ownerAcc
+    )) as Pool
 
     await expect(strategy.setNextPool(wrongPool.address, series2Id)).to.be.revertedWith('Mismatched base')
   })
