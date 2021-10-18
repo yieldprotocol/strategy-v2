@@ -5,14 +5,15 @@ const { WAD, MAX256 } = constants
 const MAX = MAX256
 
 import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultMock.json'
-import PoolMockArtifact from '../artifacts/contracts/mocks/PoolMock.sol/PoolMock.json'
+import PoolFactoryArtifact from '../artifacts/@yield-protocol/yieldspace-v2/contracts/PoolFactory.sol/PoolFactory.json'
 
 import { SafeERC20Namer } from '../typechain/SafeERC20Namer'
 import { YieldMathExtensions } from '../typechain/YieldMathExtensions'
 import { YieldMath } from '../typechain/YieldMath'
 import { Strategy } from '../typechain/Strategy'
+import { Pool } from '../typechain/Pool'
+import { PoolFactory } from '../typechain/PoolFactory'
 import { VaultMock } from '../typechain/VaultMock'
-import { PoolMock } from '../typechain/PoolMock'
 import { FYTokenMock } from '../typechain/FYTokenMock'
 import { ERC20Mock as ERC20, ERC20Mock } from '../typechain/ERC20Mock'
 
@@ -45,8 +46,8 @@ describe('Strategy', async function () {
   let base: ERC20
   let fyToken1: FYTokenMock
   let fyToken2: FYTokenMock
-  let pool1: PoolMock
-  let pool2: PoolMock
+  let pool1: Pool
+  let pool2: Pool
 
   let maturity1 = 1643046399
   let maturity2 = 1650995199
@@ -96,9 +97,40 @@ describe('Strategy', async function () {
       ownerAcc
     )) as unknown) as FYTokenMock
 
+    // Set up libraries
+    const SafeERC20NamerFactory = await ethers.getContractFactory('SafeERC20Namer')
+    const safeERC20Namer = ((await SafeERC20NamerFactory.deploy()) as unknown) as SafeERC20Namer
+    await safeERC20Namer.deployed()
+
+    const YieldMathFactory = await ethers.getContractFactory('YieldMath')
+    const yieldMath = ((await YieldMathFactory.deploy()) as unknown) as YieldMath
+    await yieldMath.deployed()
+
+    const YieldMathExtensionsFactory = await ethers.getContractFactory('YieldMathExtensions', {
+      libraries: {
+        YieldMath: yieldMath.address,
+      },
+    })
+    const YieldMathExtensionsLibrary = ((await YieldMathExtensionsFactory.deploy()) as unknown) as YieldMathExtensions
+    await YieldMathExtensionsLibrary.deployed()
+
     // Set up YieldSpace
-    pool1 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken1.address])) as PoolMock
-    pool2 = (await deployContract(ownerAcc, PoolMockArtifact, [base.address, fyToken2.address])) as PoolMock
+    const poolLibs = {
+      YieldMath: yieldMath.address,
+      SafeERC20Namer: safeERC20Namer.address
+    }
+    const PoolFactoryFactory = await ethers.getContractFactory('PoolFactory', {
+        libraries: poolLibs,
+    })
+    const poolFactory = ((await PoolFactoryFactory.deploy()) as unknown) as PoolFactory
+    await poolFactory.deployed()
+    await poolFactory.grantRoles([id('createPool(address,address)')], owner)
+
+    await poolFactory.createPool(base.address, fyToken1.address)
+    pool1 = await ethers.getContractAt('Pool', await poolFactory.getPool(base.address, fyToken1.address), ownerAcc) as Pool
+    await poolFactory.createPool(base.address, fyToken2.address)
+    pool2 = await ethers.getContractAt('Pool', await poolFactory.getPool(base.address, fyToken2.address), ownerAcc) as Pool
+
     await base.mint(pool1.address, WAD.mul(1000000))
     await base.mint(pool2.address, WAD.mul(1000000))
     await pool1.mint(owner, true, 0, MAX)
@@ -108,25 +140,9 @@ describe('Strategy', async function () {
     await pool1.sync()
     await pool2.sync()
 
-    const SafeERC20NamerFactory = await ethers.getContractFactory('SafeERC20Namer')
-    const safeERC20NamerLibrary = ((await SafeERC20NamerFactory.deploy()) as unknown) as SafeERC20Namer
-    await safeERC20NamerLibrary.deployed()
-
-    const YieldMathFactory = await ethers.getContractFactory('YieldMath')
-    const yieldMathLibrary = ((await YieldMathFactory.deploy()) as unknown) as YieldMath
-    await yieldMathLibrary.deployed()
-
-    const YieldMathExtensionsFactory = await ethers.getContractFactory('YieldMathExtensions', {
-      libraries: {
-        YieldMath: yieldMathLibrary.address,
-      },
-    })
-    const YieldMathExtensionsLibrary = ((await YieldMathExtensionsFactory.deploy()) as unknown) as YieldMathExtensions
-    await YieldMathExtensionsLibrary.deployed()
-
     const strategyFactory = await ethers.getContractFactory('Strategy', {
       libraries: {
-        SafeERC20Namer: safeERC20NamerLibrary.address,
+        SafeERC20Namer: safeERC20Namer.address,
         YieldMathExtensions: YieldMathExtensionsLibrary.address,
       },
     })
@@ -142,13 +158,13 @@ describe('Strategy', async function () {
     await strategy.grantRoles([id('setNextPool(address,bytes6)'), id('startPool(uint256,uint256)')], owner)
   })
 
-  it("can't set a pool with mismatched base", async () => {
-    const wrongPool = (await deployContract(ownerAcc, PoolMockArtifact, [
+  /* it("can't set a pool with mismatched base", async () => {
+    const wrongPool = (await deployContract(ownerAcc, PoolArtifact, [
       strategy.address,
       fyToken1.address,
-    ])) as PoolMock
+    ])) as Pool
     await expect(strategy.setNextPool(wrongPool.address, series2Id)).to.be.revertedWith('Mismatched base')
-  })
+  }) */
 
   it("can't set a pool with mismatched seriesId", async () => {
     await expect(strategy.setNextPool(pool1.address, series2Id)).to.be.revertedWith('Mismatched seriesId')
@@ -215,8 +231,10 @@ describe('Strategy', async function () {
 
       expect(await pool1.balanceOf(strategy.address)).to.equal((await pool1.totalSupply()).sub(poolSupplyBefore)) // The strategy received the LP tokens
 
-      expect(await pool1.baseCached()).to.equal(await pool1.getBaseBalance()) // The pool used all the received funds to mint
-      almostEqual(await pool1.fyTokenCached(), await pool1.getFYTokenBalance(), BigNumber.from(10)) // The pool used all the received funds to mint (minus rounding in single-digit wei)
+      const poolBaseCached = (await pool1.getCache())[0]
+      const poolFYTokenCached = (await pool1.getCache())[1]
+      expect(poolBaseCached).to.equal(await pool1.getBaseBalance()) // The pool used all the received funds to mint
+      almostEqual(poolFYTokenCached, await pool1.getFYTokenBalance(), BigNumber.from(10)) // The pool used all the received funds to mint (minus rounding in single-digit wei)
 
       expect(await pool1.balanceOf(strategy.address)).to.equal(await strategy.cached())
       expect(await strategy.balanceOf(owner)).to.equal(await strategy.totalSupply())
