@@ -202,7 +202,7 @@ describe('Strategy', async function () {
       // Skew the pool
       await fyToken1.mint(pool1.address, WAD.mul(100000))
       await pool1.sync()
-      
+
       // Mint strategy tokens
       await base.mint(strategy.address, WAD)
       const minRatio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
