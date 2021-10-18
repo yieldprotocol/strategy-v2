@@ -2309,10 +2309,10 @@
   resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-interfaces/-/yieldspace-interfaces-2.3.0-rc7.tgz#8931c5de3cd80dd1cdb4dcf900bd7c465878d216"
   integrity sha512-7pExkzMw8pikGNAdIyKskMFZ9lYWCv0hfzqnG+gW2mOp0y6YMsyKGpVR01Qi2vz4kn1Xthg9CV7EyPVFU1iiEA==
 
-"@yield-protocol/yieldspace-v2@0.11.0-rc6":
-  version "0.11.0-rc6"
-  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-v2/-/yieldspace-v2-0.11.0-rc6.tgz#07a1131e3755804bffa1ee4b379676922901574f"
-  integrity sha512-syaVGpFx9i/m4y4bw6Xenupl92/xAe9iow2Y6YSmHIFAgBVQYoxW5aZe43NtbYqqcrOCVgbACFwubCtJHSFWGA==
+"@yield-protocol/yieldspace-v2@0.11.0-rc7":
+  version "0.11.0-rc7"
+  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-v2/-/yieldspace-v2-0.11.0-rc7.tgz#a115026744ec4a49ed72ec0ba2b8fac5f467e613"
+  integrity sha512-WsUCUi5b2/2lJzOsXlfy597NyRyLlz+l4gRE4X9Ixs/OZDhUrgevwvX+Y6PIBXmjBKrNSYUVKXUzmEM2DNAjgQ==
 
 abab@^2.0.0:
   version "2.0.5"
