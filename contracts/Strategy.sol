@@ -12,13 +12,23 @@ import "@yield-protocol/vault-interfaces/DataTypes.sol";
 import "@yield-protocol/vault-interfaces/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-v2/contracts/extensions/PoolExtensions.sol";
+import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.sol";
 
+
+library DivUp {
+    /// @dev Divide a between b, rounding up
+    function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
+        // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
+        // https://docs.soliditylang.org/en/v0.8.9/types.html 
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
+    }
+}
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
 contract Strategy is AccessControl, ERC20Rewards {
+    using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
-    using PoolExtensions for IPool;
+    using YieldMathExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
@@ -178,11 +188,14 @@ contract Strategy is AccessControl, ERC20Rewards {
         uint256 baseBalance = base.balanceOf(address(this));
         require(baseBalance > 0, "No funds to start with");
 
+        // The Pool mints based on cached values, not actual ones. Consider bundling a `pool.sync`
+        // call if they differ. A griefing attack exists by donating one fyToken wei to the pool
+        // before `startPool`, solved the same way.
         uint256 baseInPool = base.balanceOf(address(pool_));
         uint256 fyTokenInPool = fyToken_.balanceOf(address(pool_));
-        
-        uint256 baseToPool = (baseBalance * baseInPool) / (baseInPool + fyTokenInPool);  // Rounds down
-        uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded up
+
+        uint256 baseToPool = (baseBalance * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
+        uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded down
 
         // Mint fyToken with underlying
         base.safeTransfer(baseJoin, fyTokenToPool);
@@ -190,7 +203,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
-        (,, cached) = pool_.mint(address(this), true, minRatio, maxRatio);
+        (,, cached) = pool_.mint(address(this), address(this), minRatio, maxRatio);
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 

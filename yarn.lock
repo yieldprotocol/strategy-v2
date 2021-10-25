@@ -2304,15 +2304,15 @@
   resolved "https://registry.yarnpkg.com/@yield-protocol/vault-interfaces/-/vault-interfaces-2.3.0-rc5.tgz#5184b3674d9b741f769cb57eb90d4eb0860dd2f5"
   integrity sha512-KYnq2corKqg9jsOvXF5jvibg/M6mXb7PEdPVoJByc18cQDEhdwcAMAGc3B04FT5BARm7NVyACOZKbdSFGIvAsQ==
 
-"@yield-protocol/yieldspace-interfaces@^2.3.0-rc6":
-  version "2.3.0-rc6"
-  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-interfaces/-/yieldspace-interfaces-2.3.0-rc6.tgz#5fbd0da0ce8c6cf5a34c4d55b143a1a383c63dc9"
-  integrity sha512-JeM2L4ive3bSWPnwGYB9vLjFPrFEH/P90gd+HLklOOaI5fw9BGN/PhFly0z/ESBZb+GR1kfRGY5mpbsVWVTimw==
+"@yield-protocol/yieldspace-interfaces@^2.3.0-rc7":
+  version "2.3.0-rc7"
+  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-interfaces/-/yieldspace-interfaces-2.3.0-rc7.tgz#8931c5de3cd80dd1cdb4dcf900bd7c465878d216"
+  integrity sha512-7pExkzMw8pikGNAdIyKskMFZ9lYWCv0hfzqnG+gW2mOp0y6YMsyKGpVR01Qi2vz4kn1Xthg9CV7EyPVFU1iiEA==
 
-"@yield-protocol/yieldspace-v2@0.11.0-rc4":
-  version "0.11.0-rc4"
-  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-v2/-/yieldspace-v2-0.11.0-rc4.tgz#082bda6965dad9c5e41a5c8de42647c3cc6c5d8b"
-  integrity sha512-wAUdOstycVgEKzJ8FYt2YvV6184AXon47zI4Tf2Blkev+qaBkoc8SFUI+wD4Oe+GYK+KuJhU26E5HpapWZKrng==
+"@yield-protocol/yieldspace-v2@0.11.0-rc7":
+  version "0.11.0-rc7"
+  resolved "https://registry.yarnpkg.com/@yield-protocol/yieldspace-v2/-/yieldspace-v2-0.11.0-rc7.tgz#a115026744ec4a49ed72ec0ba2b8fac5f467e613"
+  integrity sha512-WsUCUi5b2/2lJzOsXlfy597NyRyLlz+l4gRE4X9Ixs/OZDhUrgevwvX+Y6PIBXmjBKrNSYUVKXUzmEM2DNAjgQ==
 
 abab@^2.0.0:
   version "2.0.5"
