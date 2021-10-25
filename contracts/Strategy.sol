@@ -17,7 +17,9 @@ import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.s
 
 library DivUp {
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
-        a % b == 0 ? c = a / b : c = a / b + 1;
+        // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
+        // https://docs.soliditylang.org/en/v0.8.9/types.html 
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
     }
 }
 
