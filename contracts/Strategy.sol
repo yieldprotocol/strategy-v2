@@ -56,16 +56,13 @@ contract Strategy is AccessControl, ERC20Rewards {
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
     mapping (address => uint128) public invariants; // Value of pool invariant at start time
 
-    constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_)
+    constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
         ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
     { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
-        require(
-            ladle_.cauldron().assets(baseId_) == address(base_),
-            "Mismatched baseId"
-        );
+        
         base = base_;
         baseId = baseId_;
-        baseJoin = address(ladle_.joins(baseId_));
+        baseJoin = baseJoin_;
 
         ladle = ladle_;
         cauldron = ladle_.cauldron();
