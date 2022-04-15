@@ -50,8 +50,8 @@ describe('Strategy', async function () {
   let pool1: Pool
   let pool2: Pool
 
-  let maturity1 = 1643046399
-  let maturity2 = 1650995199
+  let maturity1 = 1672412400
+  let maturity2 = 1680271200
 
   let baseId: string
   let series1Id: string
@@ -156,7 +156,8 @@ describe('Strategy', async function () {
       'STR',
       vault.address,
       base.address,
-      baseId
+      baseId,
+      vault.joins(baseId)
     )) as unknown) as Strategy
     await strategy.deployed()
 
