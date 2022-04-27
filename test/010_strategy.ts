@@ -5,14 +5,12 @@ const { WAD, MAX256 } = constants
 const MAX = MAX256
 
 import VaultMockArtifact from '../artifacts/contracts/mocks/VaultMock.sol/VaultMock.json'
-import PoolFactoryArtifact from '../artifacts/@yield-protocol/yieldspace-v2/contracts/PoolFactory.sol/PoolFactory.json'
 
 import { SafeERC20Namer } from '../typechain/SafeERC20Namer'
 import { YieldMathExtensions } from '../typechain/YieldMathExtensions'
 import { YieldMath } from '../typechain/YieldMath'
 import { Strategy } from '../typechain/Strategy'
 import { Pool } from '../typechain/Pool'
-import { PoolFactory } from '../typechain/PoolFactory'
 import { VaultMock } from '../typechain/VaultMock'
 import { FYTokenMock } from '../typechain/FYTokenMock'
 import { ERC20Mock as ERC20, ERC20Mock } from '../typechain/ERC20Mock'
@@ -46,12 +44,15 @@ describe('Strategy', async function () {
   let base: ERC20
   let fyToken1: FYTokenMock
   let fyToken2: FYTokenMock
-  let poolFactory: PoolFactory
   let pool1: Pool
   let pool2: Pool
+  let badPool: Pool
 
   let maturity1 = 1672412400
   let maturity2 = 1680271200
+  let ts = '14613551152'
+  let g1 = '13835058055282163712'
+  let g2 = '24595658764946068821'
 
   let baseId: string
   let series1Id: string
@@ -118,27 +119,14 @@ describe('Strategy', async function () {
     // Set up YieldSpace
     const poolLibs = {
       YieldMath: yieldMath.address,
-      SafeERC20Namer: safeERC20Namer.address,
     }
-    const PoolFactoryFactory = await ethers.getContractFactory('PoolFactory', {
-      libraries: poolLibs,
-    })
-    poolFactory = ((await PoolFactoryFactory.deploy()) as unknown) as PoolFactory
-    await poolFactory.deployed()
-    await poolFactory.grantRoles([id('createPool(address,address)')], owner)
-
-    await poolFactory.createPool(base.address, fyToken1.address)
-    pool1 = (await ethers.getContractAt(
-      'Pool',
-      await poolFactory.getPool(base.address, fyToken1.address),
-      ownerAcc
-    )) as Pool
-    await poolFactory.createPool(base.address, fyToken2.address)
-    pool2 = (await ethers.getContractAt(
-      'Pool',
-      await poolFactory.getPool(base.address, fyToken2.address),
-      ownerAcc
-    )) as Pool
+    const PoolFactory = await ethers.getContractFactory('Pool', {
+        libraries: poolLibs,
+      })
+    pool1 = ((await PoolFactory.deploy(base.address, fyToken1.address, ts, g1, g2)) as unknown) as Pool
+    pool2 = ((await PoolFactory.deploy(base.address, fyToken2.address, ts, g1, g2)) as unknown) as Pool
+    badPool = ((await PoolFactory.deploy(safeERC20Namer.address, fyToken2.address, ts, g1, g2)) as unknown) as Pool
+    await badPool.deployed()
 
     await base.mint(pool1.address, WAD.mul(1000000))
     await base.mint(pool2.address, WAD.mul(1000000))
@@ -161,18 +149,11 @@ describe('Strategy', async function () {
     )) as unknown) as Strategy
     await strategy.deployed()
 
-    await strategy.grantRoles([id('setNextPool(address,bytes6)'), id('startPool(uint256,uint256)')], owner)
+    await strategy.grantRoles([id(strategy.interface, 'setNextPool(address,bytes6)'), id(strategy.interface, 'startPool(uint256,uint256)')], owner)
   })
 
   it("can't set a pool with mismatched base", async () => {
-    await poolFactory.createPool(strategy.address, fyToken1.address)
-    const wrongPool = (await ethers.getContractAt(
-      'Pool',
-      await poolFactory.getPool(strategy.address, fyToken1.address),
-      ownerAcc
-    )) as Pool
-
-    await expect(strategy.setNextPool(wrongPool.address, series2Id)).to.be.revertedWith('Mismatched base')
+    await expect(strategy.setNextPool(badPool.address, series2Id)).to.be.revertedWith('Mismatched base')
   })
 
   it("can't set a pool with mismatched seriesId", async () => {
@@ -208,6 +189,7 @@ describe('Strategy', async function () {
       await base.mint(strategy.address, WAD)
       const minRatio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
       await fyToken1.mint(pool1.address, WAD)
+      await pool1.sync()
       await expect(strategy.startPool(minRatio, MAX)).to.be.revertedWith('Pool: Reserves ratio changed')
     })
 
@@ -220,6 +202,7 @@ describe('Strategy', async function () {
       await base.mint(strategy.address, WAD)
       const maxRatio = (await base.balanceOf(pool1.address)).mul(WAD).div(await fyToken1.balanceOf(pool1.address))
       await base.mint(pool1.address, WAD)
+      await pool1.sync()
       await expect(strategy.startPool(0, maxRatio)).to.be.revertedWith('Pool: Reserves ratio changed')
     })
 
