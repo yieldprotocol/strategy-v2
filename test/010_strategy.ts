@@ -121,8 +121,8 @@ describe('Strategy', async function () {
       YieldMath: yieldMath.address,
     }
     const PoolFactory = await ethers.getContractFactory('Pool', {
-        libraries: poolLibs,
-      })
+      libraries: poolLibs,
+    })
     pool1 = ((await PoolFactory.deploy(base.address, fyToken1.address, ts, g1, g2)) as unknown) as Pool
     pool2 = ((await PoolFactory.deploy(base.address, fyToken2.address, ts, g1, g2)) as unknown) as Pool
     badPool = ((await PoolFactory.deploy(safeERC20Namer.address, fyToken2.address, ts, g1, g2)) as unknown) as Pool
@@ -149,7 +149,10 @@ describe('Strategy', async function () {
     )) as unknown) as Strategy
     await strategy.deployed()
 
-    await strategy.grantRoles([id(strategy.interface, 'setNextPool(address,bytes6)'), id(strategy.interface, 'startPool(uint256,uint256)')], owner)
+    await strategy.grantRoles(
+      [id(strategy.interface, 'setNextPool(address,bytes6)'), id(strategy.interface, 'startPool(uint256,uint256)')],
+      owner
+    )
   })
 
   it("can't set a pool with mismatched base", async () => {
