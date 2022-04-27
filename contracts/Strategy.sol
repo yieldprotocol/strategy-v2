@@ -8,9 +8,9 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-interfaces/DataTypes.sol";
-import "@yield-protocol/vault-interfaces/ICauldron.sol";
-import "@yield-protocol/vault-interfaces/ILadle.sol";
+import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
+import "@yield-protocol/vault-interfaces/src/ICauldron.sol";
+import "@yield-protocol/vault-interfaces/src/ILadle.sol";
 import "@yield-protocol/yieldspace-interfaces/IPool.sol";
 import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.sol";
 
