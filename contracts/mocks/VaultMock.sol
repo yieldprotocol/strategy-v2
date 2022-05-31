@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.6;
+pragma solidity 0.8.14;
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/vault-interfaces/src/IFYToken.sol";
 import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
 import "./BaseMock.sol";
 import "./FYTokenMock.sol";
-
 
 interface ILadle {
     function joins(bytes6) external view returns (address);
