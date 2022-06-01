@@ -11,8 +11,7 @@ import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
 import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
 import "@yield-protocol/vault-interfaces/src/ICauldron.sol";
 import "@yield-protocol/vault-interfaces/src/ILadle.sol";
-import "@yield-protocol/yieldspace-interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.sol";
+import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 
 library DivUp {
@@ -28,7 +27,6 @@ library DivUp {
 contract Strategy is AccessControl, ERC20Rewards {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
-    using YieldMathExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
@@ -54,7 +52,6 @@ contract Strategy is AccessControl, ERC20Rewards {
     bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
 
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
-    mapping (address => uint128) public invariants; // Value of pool invariant at start time
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
         ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
@@ -204,7 +201,6 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
-        invariants[address(pool_)] = pool_.invariant();   // Cache the invariant to help the frontend calculate profits
         emit PoolStarted(address(pool_));
     }
 
