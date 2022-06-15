@@ -274,9 +274,11 @@ contract WithAPoolStarted is ZeroTest {
         uint256 poolSupplyBefore = pool1.totalSupply();
         uint256 strategyReservesBefore = pool1.balanceOf(address(strategy));
         uint256 strategySupplyBefore = strategy.totalSupply();
+        uint256 userStrategyBalanceBefore = strategy.balanceOf(ownerAcc);
+        
         base.mint(address(pool1), 1e18 * poolRatio);
         fyTokenMock1.mint(address(pool1), 1e18);
-        emit log_uint(poolRatio);
+
         pool1.mint(address(strategy), address(0), 0, type(uint256).max);
         // vm.expectEmit();
         strategy.mint(ownerAcc);
@@ -285,7 +287,10 @@ contract WithAPoolStarted is ZeroTest {
         uint256 strategyMinted = strategy.totalSupply() - strategySupplyBefore;
 
         assertEq(strategy.cached(), strategyReservesBefore + lpMinted);
-        assertEq(strategy.balanceOf(ownerAcc), strategyMinted);
+        assertEq(
+            strategy.balanceOf(ownerAcc) - userStrategyBalanceBefore,
+            strategyMinted
+        );
     }
 
     function testBurnStrategyTokens() public {
