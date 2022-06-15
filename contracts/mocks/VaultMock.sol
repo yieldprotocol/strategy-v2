@@ -6,16 +6,16 @@ import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
 import "./BaseMock.sol";
 import "./FYTokenMock.sol";
 
-interface ILadle {
+interface ILadle2 {
     function joins(bytes6) external view returns (address);
-    function cauldron() external view returns (ICauldron);
+    function cauldron() external view returns (ICauldron2);
     function build(bytes6 seriesId, bytes6 ilkId, uint8 salt) external returns (bytes12 vaultId, DataTypes.Vault memory vault);
     function destroy(bytes12 vaultId) external;
     function pour(bytes12 vaultId, address to, int128 ink, int128 art) external;
     function close(bytes12 vaultId, address to, int128 ink, int128 art) external;
 }
 
-interface ICauldron {
+interface ICauldron2 {
     function assets(bytes6) external view returns (address);
     function debt(bytes6 baseId, bytes6 ilkId) external view returns (DataTypes.Debt memory);
 }
@@ -28,10 +28,10 @@ library CauldronMath {
     }
 }
 
-contract VaultMock is ICauldron, ILadle {
+contract VaultMock is ICauldron2, ILadle2 {
     using CauldronMath for uint128;
 
-    ICauldron public immutable override cauldron;
+    ICauldron2 public immutable override cauldron;
     BaseMock public immutable base;
     address public immutable baseJoin;  // = address(this)
     bytes6 public immutable baseId;      // = bytes6(1)
@@ -44,7 +44,7 @@ contract VaultMock is ICauldron, ILadle {
     uint48 public nextSeriesId;
 
     constructor() {
-        cauldron = ICauldron(address(this));
+        cauldron = ICauldron2(address(this));
         base = new BaseMock();
         baseJoin = address(this);
         baseId = bytes6(uint48(1));
