@@ -163,6 +163,24 @@ contract AfterNextPool is ZeroTest {
         strategy.startPool(0, type(uint256).max);
     }
 
+    function testMinimumRatioNotMet() public {
+        fyTokenMock1.mint(address(pool1), 100000e18);
+        base.mint(address(strategy), 1e18);
+
+        vm.prank(ownerAcc);
+        vm.expectRevert(bytes("Pool: Reserves ratio changed"));
+        strategy.startPool(2, type(uint256).max);
+    }
+
+    function testMaxRatioExceeded() public {
+        fyTokenMock1.mint(address(pool1), 100000e18);
+        base.mint(address(strategy), 1e18);
+
+        vm.prank(ownerAcc);
+        vm.expectRevert(bytes("Pool: Reserves ratio changed"));
+        strategy.startPool(0, 0);
+    }
+
     function testStartNextPoolWithZeroFYToken() public {
         fyTokenMock1.mint(address(pool1), 100000e18);
         base.mint(address(strategy), 1e18);
