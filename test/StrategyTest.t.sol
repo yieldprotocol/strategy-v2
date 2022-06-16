@@ -7,6 +7,7 @@ import "../contracts/mocks/BaseMock.sol";
 import "../contracts/mocks/FYTokenMock.sol";
 import "../contracts/mocks/ERC20Mock.sol";
 import "@yield-protocol/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
+import "@yield-protocol/yieldspace-tv/src/Pool/PoolErrors.sol";
 import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
 import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
@@ -28,8 +29,6 @@ abstract contract ZeroTest is Test {
     VaultMock vault;
     VaultMock vault2;
     BaseMock base;
-    ERC20Mock assetMock;
-    ERC20Mock assetMock2;
     FYTokenMock fyTokenMock1;
     FYTokenMock fyTokenMock2;
     PoolNonTv pool1;
@@ -58,8 +57,6 @@ abstract contract ZeroTest is Test {
         user2Acc = address(
             uint160(uint256(keccak256(abi.encodePacked(block.timestamp + 3))))
         );
-        assetMock = new ERC20Mock("ASSET", "ASS", 18);
-        assetMock2 = new ERC20Mock("ASSET", "ASS", 18);
     }
 
     function setUp() public virtual {
@@ -100,9 +97,8 @@ abstract contract ZeroTest is Test {
         pool2.init(ownerAcc, ownerAcc, 0, type(uint256).max);
         vm.stopPrank();
 
-        pool1.mint(ownerAcc, address(0), 0, type(uint256).max);
-        pool2.mint(ownerAcc, address(0), 0, type(uint256).max);
-
+        pool1.sellFYToken(address(0), 0);
+        pool2.sellFYToken(address(0), 0);
         strategy = new Strategy(
             "Strategy Token",
             "STR",
@@ -163,28 +159,25 @@ contract AfterNextPool is ZeroTest {
         strategy.startPool(0, type(uint256).max);
     }
 
-    function testMinimumRatioNotMet() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
+    function testSlippageDuringMint() public {
         base.mint(address(strategy), 1e18);
-
+        fyTokenMock1.mint(address(pool1), 500000e18);
+        pool1.sellFYToken(address(0), 0);
         vm.prank(ownerAcc);
-        vm.expectRevert(bytes("Pool: Reserves ratio changed"));
-        strategy.startPool(2, type(uint256).max);
-    }
-
-    function testMaxRatioExceeded() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
-        base.mint(address(strategy), 1e18);
-
-        vm.prank(ownerAcc);
-        vm.expectRevert(bytes("Pool: Reserves ratio changed"));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SlippageDuringMint.selector,
+                1102485379294727506,
+                0,
+                0
+            )
+        );
         strategy.startPool(0, 0);
     }
 
     function testStartNextPoolWithZeroFYToken() public {
         fyTokenMock1.mint(address(pool1), 100000e18);
         base.mint(address(strategy), 1e18);
-        // fyTokenMock1.mint(address(pool1),1e18);
 
         vm.prank(ownerAcc);
         strategy.startPool(0, type(uint256).max);
@@ -275,7 +268,7 @@ contract WithAPoolStarted is ZeroTest {
         uint256 strategyReservesBefore = pool1.balanceOf(address(strategy));
         uint256 strategySupplyBefore = strategy.totalSupply();
         uint256 userStrategyBalanceBefore = strategy.balanceOf(ownerAcc);
-        
+
         base.mint(address(pool1), 1e18 * poolRatio);
         fyTokenMock1.mint(address(pool1), 1e18);
 
