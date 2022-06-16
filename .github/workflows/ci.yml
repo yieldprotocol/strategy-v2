@@ -29,8 +29,7 @@ jobs:
       - run: yarn
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: yarn lint:ts
-      # - run: yarn lint:sol
+      - run: yarn lint:sol
 
   foundry-tests:
     runs-on: ubuntu-latest
