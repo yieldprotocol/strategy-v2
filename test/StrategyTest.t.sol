@@ -6,17 +6,17 @@ import "../contracts/mocks/VaultMock.sol";
 import "../contracts/mocks/BaseMock.sol";
 import "../contracts/mocks/FYTokenMock.sol";
 import "../contracts/mocks/ERC20Mock.sol";
-import "lib/yieldspace-tv/src/interfaces/IPool.sol";
-import "lib/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
-import "lib/yieldspace-tv/src/Pool/PoolErrors.sol";
-import "lib/yieldspace-tv/src/YieldMath.sol";
-import "lib/yieldspace-tv/src/YieldMathExtensions.sol";
-import "lib/yieldspace-tv/src/test/mocks/ERC4626TokenMock.sol";
-import "lib/vault-v2/packages/foundry/contracts/interfaces/DataTypes.sol";
-import "lib/vault-v2/packages/foundry/contracts/interfaces/ILadle.sol";
-import "lib/yield-utils-v2/contracts/token/SafeERC20Namer.sol";
-import "lib/yield-utils-v2/contracts/access/AccessControl.sol";
-import "lib/yield-utils-v2/contracts/token/IERC20.sol";
+import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import "@yield-protocol/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
+import "@yield-protocol/yieldspace-tv/src/Pool/PoolErrors.sol";
+import "@yield-protocol/yieldspace-tv/src/YieldMath.sol";
+import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
+import "@yield-protocol/yieldspace-tv/src/test/mocks/ERC4626TokenMock.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
+import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
+import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 
 abstract contract ZeroTest is Test {
     using Math64x64 for int128;
