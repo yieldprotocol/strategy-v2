@@ -97,6 +97,8 @@ abstract contract ZeroTest is Test {
         pool2.init(ownerAcc, ownerAcc, 0, type(uint256).max);
         vm.stopPrank();
 
+        fyTokenMock1.mint(address(pool1), 10000e18);
+        fyTokenMock2.mint(address(pool2), 10000e18);
         pool1.sellFYToken(address(0), 0);
         pool2.sellFYToken(address(0), 0);
         strategy = new Strategy(
@@ -159,84 +161,52 @@ contract AfterNextPool is ZeroTest {
         strategy.startPool(0, type(uint256).max);
     }
 
-    function testSlippageDuringMint() public {
-        base.mint(address(strategy), 1e18);
-        fyTokenMock1.mint(address(pool1), 500000e18);
-        pool1.sellFYToken(address(0), 0);
-        vm.prank(ownerAcc);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                SlippageDuringMint.selector,
-                1102485379294727506,
-                0,
-                0
-            )
-        );
-        strategy.startPool(0, 0);
-    }
+    // function testSlippageDuringMint() public {
+    //     base.mint(address(strategy), 1e18);
+    //     vm.prank(ownerAcc);
+    //     vm.expectRevert(PoolNonTv.SlippageDuringMint.selector);
+    //     strategy.startPool(0, 0);
+    // }
 
-    function testStartNextPoolWithZeroFYToken() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
+    function testStartNextPool() public {
         base.mint(address(strategy), 1e18);
 
-        vm.prank(ownerAcc);
-        strategy.startPool(0, type(uint256).max);
-
-        assertEq(address(strategy.pool()), address(pool1));
-        assertEq(address(strategy.fyToken()), address(fyTokenMock1));
-        assertEq(strategy.seriesId(), series1Id);
-
-        assertEq(address(strategy.nextPool()), address(0));
-        assertEq(strategy.nextSeriesId(), bytes6(0));
-    }
-
-    function testStartNextPoolSetsAndDeletesPoolVariables() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
-        base.mint(address(strategy), 1e18);
-        fyTokenMock1.mint(address(pool1), 1e18);
-
-        vm.prank(ownerAcc);
-        strategy.startPool(0, type(uint256).max);
-
-        assertEq(address(strategy.pool()), address(pool1));
-        assertEq(address(strategy.fyToken()), address(fyTokenMock1));
-        assertEq(strategy.seriesId(), series1Id);
-
-        assertEq(address(strategy.nextPool()), address(0));
-        assertEq(strategy.nextSeriesId(), bytes6(0));
-    }
-
-    function testStartWithNextPoolBorrowsAndMints() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
-        uint256 poolBaseBefore = base.balanceOf(address(pool1));
-        uint256 poolFYTokenBefore = fyTokenMock1.balanceOf(address(pool1));
         uint256 poolSupplyBefore = pool1.totalSupply();
-
-        base.mint(address(strategy), 1e18);
+        uint256 poolBaseBefore = base.balanceOf(address(pool1)); // Works because it's non-tv
+        uint256 poolFYTokenBefore = fyTokenMock1.balanceOf(address(pool1));
+        uint256 joinBaseBefore = base.balanceOf(address(vault)); // In the mock the vault is also the base join
 
         vm.prank(ownerAcc);
         strategy.startPool(0, type(uint256).max);
 
-        uint256 poolBaseAdded = base.balanceOf(address(pool1)) - poolBaseBefore;
-        uint256 poolFYTokenAdded = fyTokenMock1.balanceOf(address(pool1)) -
-            poolFYTokenBefore;
+        // Sets the new variables
+        assertEq(address(strategy.pool()), address(pool1));
+        assertEq(address(strategy.fyToken()), address(fyTokenMock1));
+        assertEq(strategy.seriesId(), series1Id);
 
-        assertEq(poolBaseAdded + poolFYTokenAdded, 1e18); // In older test it was 1e18-1
-        assertEq(base.balanceOf(address(strategy)), 0); // In older test it was 1
+        // Deletes the next* variables
+        assertEq(address(strategy.nextPool()), address(0));
+        assertEq(strategy.nextSeriesId(), bytes6(0));
+        assertEq(address(strategy.nextPool()), address(0));
+        assertEq(strategy.nextSeriesId(), bytes6(0));
 
-        assertEq(
-            pool1.balanceOf(address(strategy)),
-            pool1.totalSupply() - poolSupplyBefore
-        );
+        // Receives LP tokens
+        assertEq(pool1.balanceOf(address(strategy)), pool1.totalSupply() - poolSupplyBefore);
+        assertGt(pool1.balanceOf(address(strategy)), 0);
 
-        (, uint104 poolBaseCached, uint104 poolFYTokenCached, ) = pool1
-            .getCache();
+        // Didn't waste (much). All base are converted into shares, and any unused shares sent to the strategy contract,
+        // where they will be locked.
+        uint256 baseRemainder = pool1.sharesToken().balanceOf(address(strategy));
+        assertLt(baseRemainder, 100);
 
-        assertEq(poolBaseCached, pool1.getBaseBalance());
-
-        // assertEq(poolFYTokenCached,pool1.getFYTokenBalance()); // The pool used all the received funds to mint (minus rounding in single-digit wei). Original test uses almostEqual
-        assertEq(pool1.balanceOf(address(strategy)), strategy.cached());
-        assertEq(strategy.balanceOf(ownerAcc), strategy.totalSupply());
+        // The Strategy used part of the base to mint fyToken
+        uint256 joinBaseDelta = base.balanceOf(address(vault)) - joinBaseBefore;
+        uint256 poolBaseDelta = base.balanceOf(address(pool1)) - poolBaseBefore;
+        uint256 poolFYTokenDelta = fyTokenMock1.balanceOf(address(pool1)) - poolFYTokenBefore;
+        assertGt(joinBaseDelta, 0); // FYToken was minted
+        assertGt(poolBaseDelta, 0); // The pool received base
+        assertEq(poolFYTokenDelta, joinBaseDelta); // The pool received fyToken
+        assertEq(1e18, baseRemainder + joinBaseDelta + poolBaseDelta); // All the base is accounted for
     }
 }
 
@@ -246,13 +216,10 @@ contract WithAPoolStarted is ZeroTest {
         vm.prank(ownerAcc);
         strategy.setNextPool(IPool(address(pool1)), series1Id);
 
-        fyTokenMock1.mint(address(pool1), 100000e18);
         base.mint(address(strategy), 1000e18);
 
         vm.prank(ownerAcc);
         strategy.startPool(0, type(uint256).max);
-
-        fyTokenMock2.mint(address(pool2), 100000e18);
     }
 
     function testUnableToStartAPoolWithCurrentActive() public {
@@ -262,7 +229,7 @@ contract WithAPoolStarted is ZeroTest {
     }
 
     function testMintStrategyTokens() public {
-        uint256 poolRatio = base.balanceOf(address(pool1)) /
+        uint256 poolRatio = 1 + base.balanceOf(address(pool1)) /        // Round up on the ratio
             fyTokenMock1.balanceOf(address(pool1));
         uint256 poolSupplyBefore = pool1.totalSupply();
         uint256 strategyReservesBefore = pool1.balanceOf(address(strategy));
@@ -324,13 +291,10 @@ contract AfterMaturityOfPool is ZeroTest {
         vm.prank(ownerAcc);
         strategy.setNextPool(IPool(address(pool1)), series1Id);
 
-        fyTokenMock1.mint(address(pool1), 100000e18);
         base.mint(address(strategy), 1000e18);
 
         vm.prank(ownerAcc);
         strategy.startPool(0, type(uint256).max);
-
-        fyTokenMock2.mint(address(pool2), 100000e18);
 
         vm.warp(maturity1);
     }
@@ -344,17 +308,9 @@ contract AfterMaturityOfPool is ZeroTest {
         assertEq(strategy.seriesId(), bytes6(0));
 
         assertEq(strategy.cached(), 0);
-    }
 
-    function testEndPoolRedeemFyToken() public {
-        fyTokenMock1.mint(address(pool1), 100000e18);
-        strategy.endPool();
-        assertEq(fyTokenMock1.balanceOf(address(strategy)), 0);
-    }
-
-    function testEndPoolRepayWithUnderlying() public {
-        base.mint(address(pool1), 1e18 * 1000000);
-        strategy.endPool();
+        // Work out how many base and fyToken should be received from the strategy LP tokens,
+        // and then verify that the strategy received base + fyToken in base
     }
 }
 
@@ -364,13 +320,10 @@ contract NoActivePool is ZeroTest {
         vm.prank(ownerAcc);
         strategy.setNextPool(IPool(address(pool1)), series1Id);
 
-        fyTokenMock1.mint(address(pool1), 100000e18);
         base.mint(address(strategy), 1000e18);
 
         vm.prank(ownerAcc);
         strategy.startPool(0, type(uint256).max);
-
-        fyTokenMock2.mint(address(pool2), 100000e18);
 
         vm.warp(maturity1);
         strategy.endPool();
