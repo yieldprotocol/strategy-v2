@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.14;
 
-import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
+import "lib/yield-utils-v2/contracts/token/ERC20Permit.sol";
 
 
 contract BaseMock is ERC20Permit("Base", "BASE", 18) {
