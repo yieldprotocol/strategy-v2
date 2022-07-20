@@ -191,18 +191,24 @@ contract AfterNextPool is ZeroTest {
         assertEq(strategy.nextSeriesId(), bytes6(0));
 
         // Receives LP tokens
-        assertEq(pool1.balanceOf(address(strategy)), pool1.totalSupply() - poolSupplyBefore);
+        assertEq(
+            pool1.balanceOf(address(strategy)),
+            pool1.totalSupply() - poolSupplyBefore
+        );
         assertGt(pool1.balanceOf(address(strategy)), 0);
 
         // Didn't waste (much). All base are converted into shares, and any unused shares sent to the strategy contract,
         // where they will be locked.
-        uint256 baseRemainder = pool1.sharesToken().balanceOf(address(strategy));
+        uint256 baseRemainder = pool1.sharesToken().balanceOf(
+            address(strategy)
+        );
         assertLt(baseRemainder, 100);
 
         // The Strategy used part of the base to mint fyToken
         uint256 joinBaseDelta = base.balanceOf(address(vault)) - joinBaseBefore;
         uint256 poolBaseDelta = base.balanceOf(address(pool1)) - poolBaseBefore;
-        uint256 poolFYTokenDelta = fyTokenMock1.balanceOf(address(pool1)) - poolFYTokenBefore;
+        uint256 poolFYTokenDelta = fyTokenMock1.balanceOf(address(pool1)) -
+            poolFYTokenBefore;
         assertGt(joinBaseDelta, 0); // FYToken was minted
         assertGt(poolBaseDelta, 0); // The pool received base
         assertEq(poolFYTokenDelta, joinBaseDelta); // The pool received fyToken
@@ -229,7 +235,8 @@ contract WithAPoolStarted is ZeroTest {
     }
 
     function testMintStrategyTokens() public {
-        uint256 poolRatio = 1 + base.balanceOf(address(pool1)) /        // Round up on the ratio
+        uint256 poolRatio = 1 +
+            base.balanceOf(address(pool1)) / // Round up on the ratio
             fyTokenMock1.balanceOf(address(pool1));
         uint256 poolSupplyBefore = pool1.totalSupply();
         uint256 strategyReservesBefore = pool1.balanceOf(address(strategy));
@@ -300,7 +307,24 @@ contract AfterMaturityOfPool is ZeroTest {
     }
 
     function testEndPool() public {
+        uint256 beforeBalance = base.balanceOf(address(strategy));
         // vm.expectEmit(bytes("PoolEnded"));
+
+        uint256 balanceofpooltokens = strategy.pool().balanceOf(
+            address(strategy)
+        );
+
+        (uint104 baseCached, uint104 fyTokenCached, , ) = strategy
+            .pool()
+            .getCache();
+        uint256 sharesOut = (balanceofpooltokens * baseCached) /
+            strategy.pool().totalSupply();
+        uint256 realFYTokenCached_ = fyTokenCached -
+            strategy.pool().totalSupply();
+        uint256 fyTokenOut = (balanceofpooltokens * realFYTokenCached_) /
+            strategy.pool().totalSupply();
+
+        uint256 sharesBalance = baseCached - sharesOut;
         strategy.endPool();
 
         assertEq(address(strategy.pool()), address(0));
@@ -311,6 +335,10 @@ contract AfterMaturityOfPool is ZeroTest {
 
         // Work out how many base and fyToken should be received from the strategy LP tokens,
         // and then verify that the strategy received base + fyToken in base
+        assertEq(
+            base.balanceOf(address(strategy)) - beforeBalance,
+            baseCached - sharesBalance + fyTokenOut
+        );
     }
 }
 
