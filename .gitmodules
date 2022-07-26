@@ -7,6 +7,7 @@
 [submodule "lib/vault-v2"]
 	path = lib/vault-v2
 	url = https://github.com/yieldprotocol/vault-v2
+
 [submodule "lib/yieldspace-tv"]
 	path = lib/yieldspace-tv
 	url = https://github.com/yieldprotocol/yieldspace-tv
