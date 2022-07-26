@@ -142,7 +142,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         );
         DataTypes.Series memory series = cauldron.series(seriesId_);
         require(
-            series.fyToken == pool_.fyToken(),
+            address(series.fyToken) == address(pool_.fyToken()),
             "Mismatched seriesId"
         );
 
@@ -166,7 +166,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Caching
         IPool pool_ = nextPool_;
-        IFYToken fyToken_ = pool_.fyToken();
+        IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
         bytes6 seriesId_ = nextSeriesId;
 
         pool = pool_;
