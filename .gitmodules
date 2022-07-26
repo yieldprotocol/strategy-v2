@@ -10,4 +10,3 @@
 [submodule "lib/yieldspace-tv"]
 	path = lib/yieldspace-tv
 	url = https://github.com/yieldprotocol/yieldspace-tv
-	branch = mainbackup0720
