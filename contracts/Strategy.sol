@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.14;
+pragma solidity >=0.8.13;
 
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
@@ -8,11 +8,11 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-interfaces/src/DataTypes.sol";
-import "@yield-protocol/vault-interfaces/src/ICauldron.sol";
-import "@yield-protocol/vault-interfaces/src/ILadle.sol";
-import "@yield-protocol/yieldspace-interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-v2/contracts/extensions/YieldMathExtensions.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
 
 
 library DivUp {
@@ -142,7 +142,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         );
         DataTypes.Series memory series = cauldron.series(seriesId_);
         require(
-            series.fyToken == pool_.fyToken(),
+            address(series.fyToken) == address(pool_.fyToken()),
             "Mismatched seriesId"
         );
 
@@ -166,7 +166,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         // Caching
         IPool pool_ = nextPool_;
-        IFYToken fyToken_ = pool_.fyToken();
+        IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
         bytes6 seriesId_ = nextSeriesId;
 
         pool = pool_;

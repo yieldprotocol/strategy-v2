@@ -17,7 +17,7 @@ abi/
 output/
 typechain/
 deployments/
-
+out/
 # Secret files
 .etherscanKey
 .infuraKey
