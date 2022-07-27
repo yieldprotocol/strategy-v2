@@ -2,27 +2,11 @@
 pragma solidity 0.8.14;
 
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
 import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
 
 
-library DivUp {
-    /// @dev Divide a between b, rounding up
-    function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
-        // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html 
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
-    }
-}
 
 /// @dev The Exchange contract takes base currency from strategies, and uses
 /// those assets to mint tokens from a different strategy. Then, the Exchange
