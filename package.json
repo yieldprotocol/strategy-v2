@@ -4,7 +4,8 @@
   "description": "YieldSpace v2 Liquidity Providing Strategy",
   "author": "Yield Inc.",
   "files": [
-    "contracts/*.sol"
+    "contracts/*.sol",
+    "!contracts/**/*.sol"
   ],
   "scripts": {
     "forge:build": "forge build",
