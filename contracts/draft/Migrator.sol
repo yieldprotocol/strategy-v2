@@ -28,6 +28,9 @@ contract Migrator is AccessControl {
     /// No base tokens were received
     error NoBaseReceived();
 
+    /// Mock srcStrategy totalSupply
+    uint256 public totalSupply;
+
     /// @dev Accept base from a calling strategy, send it to the strategy
     /// exchange, and register a migration from the src to the new strategies
     function mint(IStrategy srcStrategy, address, uint256 dstStrategy_, uint256 exchange_)
@@ -35,6 +38,9 @@ contract Migrator is AccessControl {
         auth
         returns (uint256, uint256, uint256)
     {
+        // Mock as if we are the srcStrategy with regards to totalSupply
+        totalSupply = srcStrategy.totalSupply();
+
         // Convert the dstStrategy and exchange parameters
         IStrategy dstStrategy = IStrategy(address(bytes20(bytes32(dstStrategy_))));
         IExchange exchange = IExchange(address(bytes20(bytes32(exchange_))));
@@ -49,6 +55,7 @@ contract Migrator is AccessControl {
         // Register the src strategy in the strategy exchange
         base.safeTransfer(address(exchange), baseReceived);
         exchange.register(srcStrategy, dstStrategy);
+        delete totalSupply;
 
         emit Migrated(srcStrategy, dstStrategy, baseReceived);
 
