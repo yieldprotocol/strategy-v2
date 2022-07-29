@@ -24,6 +24,7 @@ interface ICauldronAddSeries {
 }
 
 abstract contract ZeroTest is Test {
+    using stdStorage for StdStorage;
 
     uint32 maturity;
     IERC20Metadata baseToken;
@@ -65,21 +66,21 @@ abstract contract ZeroTest is Test {
         ICauldronAddSeries(address(srcStrategy.cauldron())).addSeries(dstSeriesId, srcStrategy.baseId(), dstFYToken);
 
         // Init dstPool
-        // stdstore
-        //     .target(address(baseToken))
-        //     .sig(baseToken.balanceOf.selector)
-        //     .with_key(address(dstPool))
-        //     .checked_write(100 * 10**baseToken.decimals());
-        // dstPool.init(address(0));
+        stdstore
+            .target(address(baseToken))
+            .sig(baseToken.balanceOf.selector)
+            .with_key(address(dstPool))
+            .checked_write(100 * 10**baseToken.decimals());
+        dstPool.init(address(0));
 
-        // // Init dstStrategy
-        // dstStrategy.setNextPool(address(dstPool));
-        // stdstore
-        //     .target(address(baseToken))
-        //     .sig(baseToken.balanceOf.selector)
-        //     .with_key(address(dstStrategy))
-        //     .checked_write(100 * 10**baseToken.decimals());
-        // dstStrategy.startPool(0, type(uint256).max);
+        // Init dstStrategy
+        dstStrategy.setNextPool(dstPool, dstSeriesId);
+        stdstore
+            .target(address(baseToken))
+            .sig(baseToken.balanceOf.selector)
+            .with_key(address(dstStrategy))
+            .checked_write(100 * 10**baseToken.decimals());
+        dstStrategy.startPool(0, type(uint256).max);
 
         // --- STATES ---
         // Set migrator as next pool in srcStrategy
