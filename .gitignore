@@ -9,32 +9,21 @@
 *.tgz
 package/
 
-# Buidler files
-cache
-artifacts
-node_modules/
-abi/
-output/
-typechain/
-deployments/
-out/
 # Secret files
 .etherscanKey
 .infuraKey
 .mythxKey
 .secret
-build/
+.env
+
+# Foundry
+artifacts/
+cache/
 
 # Solidity-coverage
 coverage/
 .coverage_contracts/
 coverage.json
-
-# Yarn
-yarn-error.log
-
-# NPM
-package-lock.json
 
 # Crytic
 crytic-export/

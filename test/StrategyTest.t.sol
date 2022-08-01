@@ -93,8 +93,8 @@ abstract contract ZeroTest is Test {
         base.mint(address(pool1), 1000000e18);
         base.mint(address(pool2), 1000000e18);
         vm.startPrank(ownerAcc);
-        pool1.init(ownerAcc, ownerAcc);
-        pool2.init(ownerAcc, ownerAcc);
+        pool1.init(ownerAcc);
+        pool2.init(ownerAcc);
         vm.stopPrank();
 
         fyTokenMock1.mint(address(pool1), 10000e18);
