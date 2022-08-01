@@ -19,15 +19,18 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 /// or they will be lost.
 contract Migrator is AccessControl {
     using MinimalTransferHelper for IERC20;
-    
+
+    /// Migrator ready to migrate `srcStrategy` to `dstStrategy`
+    event Prepared(IStrategy indexed dstStrategy);
+
     /// `srcStrategy` migrated its assets of `baseTokens` base to `dstStrategy`
     event Migrated(IStrategy indexed srcStrategy, IStrategy indexed dstStrategy, uint256 baseTokens);
 
     /// `prepare` needs to be called before `srcStrategy.setNextPool()`
     error NotPrepared();
 
-    /// The bases in the strategies don't match
-    error BaseMismatch(IERC20 srcBase, IERC20 dstBase);
+    /// The fyToken in the strategies don't match
+    error FYTokenMismatch(IFYToken srcFYToken, IFYToken dstFYToken);
 
     /// No base tokens were received
     error NoBaseReceived();
@@ -50,14 +53,15 @@ contract Migrator is AccessControl {
 
     /// @dev During calling `strategy.setNextPool` a call is made to the cauldron to match the fyToken
     /// used by the next pool with the fyToken registerd in the Cauldron with the `seriesId` passed onto
-    /// `setNextPool`. Call `migrator.prepare(dstStrategy.seriesId())` before
+    /// `setNextPool`. Call `migrator.prepare(dstStrategy)` before
     /// `srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId())`
-    function prepare(bytes6 seriesId)
+    function prepare(IStrategy dstStrategy)
         external
         auth
     {
-        fyToken = cauldron.series(seriesId).fyToken;
+        fyToken = cauldron.series(dstStrategy.seriesId()).fyToken;
         base = IERC20(fyToken.underlying());
+        emit Prepared(dstStrategy);
     }
 
     /// @dev Accept base from a calling strategy, send it to the strategy
@@ -68,6 +72,8 @@ contract Migrator is AccessControl {
     /// abuse. That means that the source strategy needs to be given permission to `mint`
     /// into the migrator contract.
     /// @notice The migrator needs to be seeded with 1 wei of each base
+    /// @notice The destination strategy can be any, as long as its current fyToken matches
+    /// what the migrator is prepared to do.
     /// @param srcStrategy The strategy to migrate from.
     /// @param ignored Ignored
     /// @param dstStrategy_ The strategy to migrate to, casted onto an uint256
@@ -86,7 +92,7 @@ contract Migrator is AccessControl {
         IStrategy dstStrategy = IStrategy(address(bytes20(bytes32(dstStrategy_))));
         IExchange exchange = IExchange(address(bytes20(bytes32(exchange_))));
 
-        if (base != dstStrategy.base()) revert BaseMismatch(base, dstStrategy.base());
+        if (fyToken != dstStrategy.fyToken()) revert FYTokenMismatch(fyToken, dstStrategy.fyToken());
 
         // Use all base, except 1 wei
         uint256 baseUsed = base.balanceOf(address(this));
