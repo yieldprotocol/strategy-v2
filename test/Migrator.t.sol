@@ -24,7 +24,7 @@ interface ICauldronAddSeries {
     function addSeries(bytes6, bytes6, IFYToken) external;
 }
 
-abstract contract ZeroTest is Test {
+abstract contract ZeroState is Test {
     using stdStorage for StdStorage;
 
     // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
@@ -157,115 +157,53 @@ abstract contract ZeroTest is Test {
         dstStrategy.startPool(0, type(uint256).max);
 
         vm.stopPrank();
-
-        // --- STATES ---
-        // srcStrategy invests -> migrates
-        // srcStrategy divests
     }
 }
 
-contract BasicTest is ZeroTest {
+contract PrepareTest is ZeroState {
+    function testPrepare() public {
+        console2.log("migrator.prepare(dstStrategy)");
+        vm.startPrank(timelock);
+        migrator.prepare(IStrategy(address(dstStrategy)));
+        vm.stopPrank();
+    }
+}
+
+abstract contract PrepareState is ZeroState {
+    function setUp() public override virtual {
+        super.setUp();
+        vm.startPrank(timelock);
+        migrator.prepare(IStrategy(address(dstStrategy)));
+        vm.stopPrank();
+    }
+}
+
+contract SetNextPoolTest is PrepareState {
     function testSetNextPool() public {
         console2.log("srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId())");
         vm.startPrank(timelock);
-        migrator.prepare(dstStrategy.seriesId());
         srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId());
+        vm.stopPrank();
+    }
+}
+
+abstract contract SetNextPoolState is PrepareState {
+    function setUp() public override virtual {
+        super.setUp();
+        vm.startPrank(timelock);
+        srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId());
+        vm.stopPrank();
+    }
+}
+
+contract StartPoolTest is SetNextPoolState {
+    function testStartPool() public {
+        console2.log("srcStrategy.startPool(dstStrategy, exchange)");
+        vm.startPrank(timelock);
         srcStrategy.startPool(
             uint256(bytes32(bytes20(address(dstStrategy)))),
             uint256(bytes32(bytes20(address(exchange))))
         );
         vm.stopPrank();
     }
-    
-//    function testPrepare() public {
-//        console2.log("migrator.prepare");
-//        migrator.prepare(dstSeriesId);
-//    }
-//
-//    function testMismatchSeriesId() public {
-//        vm.prank(ownerAcc);
-//        vm.expectRevert(bytes("Mismatched seriesId"));
-//        strategy.setNextPool(IPool(address(pool2)), series1Id);
-//    }
-//
-//    function testCantStartPool() public {
-//        vm.prank(ownerAcc);
-//        vm.expectRevert(bytes("Next pool not set"));
-//        strategy.startPool(0, type(uint256).max);
-//    }
-//
-//    function testSetNextPool() public {
-//        vm.prank(ownerAcc);
-//        strategy.setNextPool(IPool(address(pool1)), series1Id);
-//        assertEq(address(strategy.nextPool()), address(pool1));
-//        assertEq(strategy.nextSeriesId(), series1Id);
-//    }
-}
-
-contract AfterNextPool is ZeroTest {
-//    function setUp() public override {
-//        // super.setUp();
-//        // vm.prank(ownerAcc);
-//        // strategy.setNextPool(IPool(address(pool1)), series1Id);
-//    }
-//
-//    function testNoFundsStart() public {
-//        vm.prank(ownerAcc);
-//        vm.expectRevert(bytes("No funds to start with"));
-//        strategy.startPool(0, type(uint256).max);
-//    }
-//
-//    // function testSlippageDuringMint() public {
-//    //     base.mint(address(strategy), 1e18);
-//    //     vm.prank(ownerAcc);
-//    //     vm.expectRevert(PoolNonTv.SlippageDuringMint.selector);
-//    //     strategy.startPool(0, 0);
-//    // }
-//
-//    function testStartNextPool() public {
-//        base.mint(address(strategy), 1e18);
-//
-//        uint256 poolSupplyBefore = pool1.totalSupply();
-//        uint256 poolBaseBefore = base.balanceOf(address(pool1)); // Works because it's non-tv
-//        uint256 poolFYTokenBefore = fyTokenMock1.balanceOf(address(pool1));
-//        uint256 joinBaseBefore = base.balanceOf(address(vault)); // In the mock the vault is also the base join
-//
-//        vm.prank(ownerAcc);
-//        strategy.startPool(0, type(uint256).max);
-//
-//        // Sets the new variables
-//        assertEq(address(strategy.pool()), address(pool1));
-//        assertEq(address(strategy.fyToken()), address(fyTokenMock1));
-//        assertEq(strategy.seriesId(), series1Id);
-//
-//        // Deletes the next* variables
-//        assertEq(address(strategy.nextPool()), address(0));
-//        assertEq(strategy.nextSeriesId(), bytes6(0));
-//        assertEq(address(strategy.nextPool()), address(0));
-//        assertEq(strategy.nextSeriesId(), bytes6(0));
-//
-//        // Receives LP tokens
-//        assertEq(
-//            pool1.balanceOf(address(strategy)),
-//            pool1.totalSupply() - poolSupplyBefore
-//        );
-//        assertGt(pool1.balanceOf(address(strategy)), 0);
-//
-//        // Didn't waste (much). All base are converted into shares, and any unused shares sent to the strategy contract,
-//        // where they will be locked.
-//        uint256 baseRemainder = pool1.sharesToken().balanceOf(
-//            address(strategy)
-//        );
-//        assertLt(baseRemainder, 100);
-//
-//        // The Strategy used part of the base to mint fyToken
-//        uint256 joinBaseDelta = base.balanceOf(address(vault)) - joinBaseBefore;
-//        uint256 poolBaseDelta = base.balanceOf(address(pool1)) - poolBaseBefore;
-//        uint256 poolFYTokenDelta = fyTokenMock1.balanceOf(address(pool1)) -
-//            poolFYTokenBefore;
-//        assertGt(joinBaseDelta, 0); // FYToken was minted
-//        assertGt(poolBaseDelta, 0); // The pool received base
-//        assertEq(poolFYTokenDelta, joinBaseDelta); // The pool received fyToken
-//        assertEq(1e18, baseRemainder + joinBaseDelta + poolBaseDelta); // All the base is accounted for
-//    }
 }
