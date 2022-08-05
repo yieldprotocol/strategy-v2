@@ -161,11 +161,25 @@ abstract contract ZeroState is Test {
 }
 
 contract PrepareTest is ZeroState {
+    event Prepared(IStrategy indexed dstStrategy);
+
+    function testPrepareAuth() public {
+        console2.log("migrator.prepare(dstStrategy) auth revert");
+        // vm.expectRevert(bytes("Access Denied"));
+        migrator.prepare(IStrategy(address(dstStrategy)));
+    }
+
     function testPrepare() public {
         console2.log("migrator.prepare(dstStrategy)");
+        vm.expectEmit(true, false, false, false);
+        emit Prepared(IStrategy(address(dstStrategy)));
+
         vm.startPrank(timelock);
         migrator.prepare(IStrategy(address(dstStrategy)));
         vm.stopPrank();
+
+        assertEq(address(migrator.fyToken()), address(dstFYToken));
+        assertEq(address(migrator.base()), address(baseToken));        
     }
 }
 
@@ -184,6 +198,10 @@ contract SetNextPoolTest is PrepareState {
         vm.startPrank(timelock);
         srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId());
         vm.stopPrank();
+
+        // Test the strategy can add the migrator as the next pool
+        assertEq(address(srcStrategy.nextPool()), address(migrator));
+        assertEq(srcStrategy.nextSeriesId(), dstSeriesId);
     }
 }
 
@@ -197,13 +215,57 @@ abstract contract SetNextPoolState is PrepareState {
 }
 
 contract StartPoolTest is SetNextPoolState {
+    event Migrated(IStrategy indexed srcStrategy, IStrategy indexed dstStrategy, uint256 baseTokens);
+    error FYTokenMismatch(IFYToken srcFYToken, IFYToken dstFYToken);
+
+    function testMintAuth() public {
+        console2.log("migrator.mint(...) auth revert");
+        // vm.expectRevert(bytes("Access Denied"));
+        migrator.mint(IStrategy(address(srcStrategy)), address(0), 0, 0);
+    }
+
+    function testFYTokenMismatch() public {
+        console2.log("srcStrategy.startPool(dstStrategy, exchange)");
+        vm.startPrank(address(srcStrategy));
+        // vm.expectRevert(FYTokenMismatch.selector);
+        migrator.mint(
+            IStrategy(address(srcStrategy)),
+            address(0),
+            0,
+            uint160(bytes20(address(srcStrategy))) // srcStrategy has a different fyToken from dstStrategy, with which we prepared the migrator.
+        );
+        vm.stopPrank();
+        
+    }
+
     function testStartPool() public {
         console2.log("srcStrategy.startPool(dstStrategy, exchange)");
+
+        vm.expectEmit(true, true, true, false);
+        emit Migrated(
+            IStrategy(address(srcStrategy)),
+            IStrategy(address(dstStrategy)),
+            baseToken.balanceOf(address(srcStrategy))
+        );
+
         vm.startPrank(timelock);
         srcStrategy.startPool(
             uint256(bytes32(bytes20(address(dstStrategy)))),
             uint256(bytes32(bytes20(address(exchange))))
         );
         vm.stopPrank();
+
+        // srcStrategy has no base
+        assertEq(baseToken.balanceOf(address(srcStrategy)), 0);
+        // migrator has no base
+        assertEq(baseToken.balanceOf(address(migrator)), 0);
+        // exchange registered the migration
+        (IStrategy dstStrategy_,) = exchange.relativeValues(srcStrategy);
+        assertFalse(address(dstStrategy_) == address(0));
+
+        // Test that the migrator clears state
+        assertEq(migrator.totalSupply(), 0);
+        assertEq(address(migrator.fyToken()), address(0));
+        assertEq(address(migrator.base()), address(0));
     }
 }

@@ -94,7 +94,7 @@ contract Migrator is AccessControl {
 
         if (fyToken != dstStrategy.fyToken()) revert FYTokenMismatch(fyToken, dstStrategy.fyToken());
 
-        // Use all base, except 1 wei
+        // Use all base
         uint256 baseUsed = base.balanceOf(address(this));
         if (baseUsed == 0) revert NoBaseReceived();
 
