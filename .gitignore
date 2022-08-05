@@ -19,10 +19,9 @@ typechain/
 deployments/
 out/
 # Secret files
-.etherscanKey
-.infuraKey
-.mythxKey
+.*Key
 .secret
+.env
 build/
 
 # Solidity-coverage
