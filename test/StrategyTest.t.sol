@@ -10,7 +10,6 @@ import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
 import "@yield-protocol/yieldspace-tv/src/Pool/PoolErrors.sol";
 import "@yield-protocol/yieldspace-tv/src/YieldMath.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
 import "@yield-protocol/yieldspace-tv/src/test/mocks/ERC4626TokenMock.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
@@ -44,9 +43,6 @@ abstract contract ZeroTest is Test {
     bytes6 series1Id;
     bytes6 series2Id;
 
-    // SafeERC20Namer safeERC20Namer;
-    // YieldMath yieldMath;
-    // YieldMathExtensions yieldMathExtensions;
     constructor() {
         ownerAcc = address(
             uint160(uint256(keccak256(abi.encodePacked(block.timestamp))))

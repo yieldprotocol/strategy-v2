@@ -12,15 +12,14 @@ import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
 
 
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
         // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html 
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
+        // https://docs.soliditylang.org/en/v0.8.9/types.html
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; }
     }
 }
 
@@ -28,7 +27,6 @@ library DivUp {
 contract Strategy is AccessControl, ERC20Rewards {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
-    using YieldMathExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
@@ -54,12 +52,11 @@ contract Strategy is AccessControl, ERC20Rewards {
     bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
 
     uint256 public cached;                       // LP tokens owned by the strategy after the last operation
-    mapping (address => uint128) public invariants; // Value of pool invariant at start time
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
-        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_)))
     { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
-        
+
         base = base_;
         baseId = baseId_;
         baseJoin = baseJoin_;
@@ -132,7 +129,7 @@ contract Strategy is AccessControl, ERC20Rewards {
     }
 
     /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, bytes6 seriesId_) 
+    function setNextPool(IPool pool_, bytes6 seriesId_)
         external
         auth
     {
@@ -204,7 +201,6 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
-        invariants[address(pool_)] = pool_.invariant();   // Cache the invariant to help the frontend calculate profits
         emit PoolStarted(address(pool_));
     }
 
@@ -218,11 +214,11 @@ contract Strategy is AccessControl, ERC20Rewards {
         IFYToken fyToken_ = fyToken;
 
         uint256 toDivest = pool_.balanceOf(address(this));
-        
+
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
         (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
-        
+
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);
         fyToken_.redeem(address(this), fyTokenDivested);
