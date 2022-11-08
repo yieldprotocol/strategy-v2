@@ -11,17 +11,34 @@ import "../contracts/Strategy.sol";
 //   mintDivested
 //   burnDivested
 // Invested
-//   divest -> Divested
+//   time passes -> InvestedAfterMaturity
 //   eject -> DivestedAndEjected
 //   mint(3)
 //   burn
+// InvestedAfterMaturity
+//   divest -> Divested
+
 // DivestedAndEjected
 //   same as Divested
+//   time passes -> DivestedAndEjectedAfterMaturityOfEjected
+// InvestedAndEjected
+//   same as Invested
+//   time passes -> InvestedAfterMaturityAndEjected
+//   time passes -> InvestedAndAfterMaturityOfEjected
+//   time passes -> InvestedAfterMaturityAndAfterMaturityOfEjected
+// InvestedAfterMaturityAndEjected
+//   divest -> DivestedAndEjected
+//   time passes -> InvestedAfterMaturityAndAfterMaturityOfEjected
+
+
 // DivestedAndEjectedAfterMaturityOfEjected
 //   same as DivestedAndEjected
 //   redeemEjected -> Divested
-// InvestedAndEjected
+// InvestedAfterMaturityAndEjected
+//   same as InvestedAfterMaturity
+// InvestedAndAfterMaturityOfEjected
 //   same as Invested
-// InvestedAndEjectedAfterMaturityOfEjected
-//   same as InvestedAndEjected
 //   redeemEjected -> Invested
+// InvestedAfterMaturityAndAfterMaturityOfEjected
+//   same as InvestedAfterMaturity
+//   redeemEjected -> InvestedAfterMaturity

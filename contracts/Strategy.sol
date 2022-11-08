@@ -335,9 +335,9 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         invested
         returns (uint256 minted)
     {
+        // TODO: What to do after maturity? 
         // Caching
         IPool pool_ = pool;
-        IFYToken fyToken_ = fyToken;
         uint256 cached_ = cachedBase;
 
         // minted = supply * value(deposit) / value(strategy)
@@ -380,6 +380,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         invested
         returns (uint256 withdrawal)
     {
+        // TODO: What to do after maturity?
+        
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
