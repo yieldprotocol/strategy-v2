@@ -1,28 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
-import "../contracts/Strategy.sol";
 import "../contracts/draft/Migrator.sol";
-import "../contracts/draft/Exchange.sol";
-import "../contracts/mocks/FYTokenMock.sol";
+import "../contracts/interfaces/IStrategy.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
-import "@yield-protocol/yieldspace-tv/src/Pool/PoolErrors.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMath.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMathExtensions.sol";
-import "@yield-protocol/yieldspace-tv/src/test/mocks/ERC4626TokenMock.sol";
-import "@yield-protocol/vault-v2/contracts/FYToken.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/IJoin.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/IOracle.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-
-interface ICauldronAddSeries {
-    function addSeries(bytes6, bytes6, IFYToken) external;
-}
 
 abstract contract ZeroState is Test {
     using stdStorage for StdStorage;
@@ -38,99 +21,36 @@ abstract contract ZeroState is Test {
 
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     IStrategy srcStrategy = IStrategy(0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295);
-    Strategy dstStrategy;
-    uint32 srcMaturity;
-    uint32 dstMaturity;
-    IFYToken dstFYToken;
-    bytes6 dstSeriesId;
     IPool srcPool;
-    Pool dstPool;
+    bytes6 srcSeriesId;
     IERC20Metadata sharesToken;
     IERC20Metadata baseToken;
-    bytes6 baseId;
-    IJoin baseJoin;
-    ICauldron cauldron;
-    Exchange exchange;
+    IFYToken fyToken;
     Migrator migrator;
 
     function setUp() public virtual {
-        vm.createSelectFork('tenderly');
-        vm.startPrank(timelock);
+        vm.createSelectFork('mainnet');
 
-        srcMaturity = uint32(srcStrategy.fyToken().maturity());
-        dstMaturity = srcMaturity + (3 * 30 * 24 * 60 * 60);
-        baseId = srcStrategy.baseId();
-        baseJoin = IJoin(srcStrategy.baseJoin());
         srcPool = srcStrategy.pool();
-        cauldron = srcStrategy.cauldron();
-
+        srcSeriesId = srcStrategy.seriesId();
         baseToken = srcPool.baseToken();
+        fyToken = IFYToken(address(srcPool.fyToken()));
         sharesToken = srcPool.sharesToken();
-        (,,, uint16 g1Fee) = srcPool.getCache();
 
-        dstFYToken = new FYToken(baseId, IOracle(address(0)), baseJoin, dstMaturity, "", "");
-        AccessControl(address(baseJoin)).grantRole(
-            bytes4(baseJoin.join.selector),
-            address(dstFYToken)
-        );
-        AccessControl(address(baseJoin)).grantRole(
-            bytes4(baseJoin.exit.selector),
-            address(dstFYToken)
-        );
-        
-        dstPool = new PoolNonTv(address(baseToken), address(dstFYToken), srcPool.ts(), g1Fee);
-        AccessControl(address(dstPool)).grantRole(
-            bytes4(dstPool.init.selector),
-            address(timelock)
-        );
-
-        dstStrategy = new Strategy("", "", srcStrategy.ladle(), baseToken, baseId, address(baseJoin));
-        AccessControl(address(dstStrategy)).grantRole(
-            bytes4(dstStrategy.setNextPool.selector),
-            address(timelock)
-        );
-        AccessControl(address(dstStrategy)).grantRole(
-            bytes4(dstStrategy.startPool.selector),
-            address(timelock)
-        );
-        
-        migrator = new Migrator(cauldron);
-        AccessControl(address(migrator)).grantRole(
-            bytes4(migrator.prepare.selector),
-            address(timelock)
-        );
-        AccessControl(address(migrator)).grantRole(
-            bytes4(migrator.mint.selector),
-            address(srcStrategy)
-        );
-
-        exchange = new Exchange();
-        AccessControl(address(exchange)).grantRole(
-            bytes4(exchange.register.selector),
-            address(migrator)
-        );
+        migrator = new Migrator(baseToken, fyToken);
 
         vm.label(address(srcStrategy), "srcStrategy");
-        vm.label(address(dstStrategy), "dstStrategy");
-        vm.label(address(dstFYToken), "dstFYToken");
         vm.label(address(srcPool), "srcPool");
-        vm.label(address(dstPool), "dstPool");
         vm.label(address(sharesToken), "sharesToken");
         vm.label(address(baseToken), "baseToken");
-        vm.label(address(baseJoin), "baseJoin");
-        vm.label(address(cauldron), "cauldron");
-        vm.label(address(exchange), "exchange");
+        vm.label(address(fyToken), "fyToken");
         vm.label(address(migrator), "migrator");
 
         // Warp to maturity of srcStrategy
-        vm.warp(srcMaturity + 1);
+        vm.warp(uint32(srcStrategy.fyToken().maturity()) + 1);
 
         // srcStrategy divests
         srcStrategy.endPool();
-
-        // Add dst series
-        dstSeriesId = bytes6(uint48(srcStrategy.seriesId()) + 1);
-        ICauldronAddSeries(address(cauldron)).addSeries(dstSeriesId, srcStrategy.baseId(), dstFYToken);
 
         // Init migrator
         stdstore
@@ -138,134 +58,41 @@ abstract contract ZeroState is Test {
             .sig(baseToken.balanceOf.selector)
             .with_key(address(migrator))
             .checked_write(1);
-
-        // Init dstPool
-        stdstore
-            .target(address(baseToken))
-            .sig(baseToken.balanceOf.selector)
-            .with_key(address(dstPool))
-            .checked_write(100 * 10**baseToken.decimals());
-        dstPool.init(address(0));
-
-        // Init dstStrategy
-        dstStrategy.setNextPool(dstPool, dstSeriesId);
-        stdstore
-            .target(address(baseToken))
-            .sig(baseToken.balanceOf.selector)
-            .with_key(address(dstStrategy))
-            .checked_write(100 * 10**baseToken.decimals());
-        dstStrategy.startPool(0, type(uint256).max);
-
-        vm.stopPrank();
     }
 }
 
-contract PrepareTest is ZeroState {
-    event Prepared(IStrategy indexed dstStrategy);
-
-    function testPrepareAuth() public {
-        console2.log("migrator.prepare(dstStrategy) auth revert");
-        // vm.expectRevert(bytes("Access Denied"));
-        migrator.prepare(IStrategy(address(dstStrategy)));
-    }
-
-    function testPrepare() public {
-        console2.log("migrator.prepare(dstStrategy)");
-        vm.expectEmit(true, false, false, false);
-        emit Prepared(IStrategy(address(dstStrategy)));
-
-        vm.startPrank(timelock);
-        migrator.prepare(IStrategy(address(dstStrategy)));
-        vm.stopPrank();
-
-        assertEq(address(migrator.fyToken()), address(dstFYToken));
-        assertEq(address(migrator.base()), address(baseToken));        
-    }
-}
-
-abstract contract PrepareState is ZeroState {
-    function setUp() public override virtual {
-        super.setUp();
-        vm.startPrank(timelock);
-        migrator.prepare(IStrategy(address(dstStrategy)));
-        vm.stopPrank();
-    }
-}
-
-contract SetNextPoolTest is PrepareState {
+contract ZeroStateTest is ZeroState {
     function testSetNextPool() public {
         console2.log("srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId())");
-        vm.startPrank(timelock);
-        srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId());
-        vm.stopPrank();
+        vm.prank(timelock);
+        srcStrategy.setNextPool(IPool(address(migrator)), srcSeriesId);
 
         // Test the strategy can add the migrator as the next pool
         assertEq(address(srcStrategy.nextPool()), address(migrator));
-        assertEq(srcStrategy.nextSeriesId(), dstSeriesId);
+        assertEq(srcStrategy.nextSeriesId(), srcStrategy.seriesId());
     }
 }
 
-abstract contract SetNextPoolState is PrepareState {
+abstract contract SetNextPoolState is ZeroState {
     function setUp() public override virtual {
         super.setUp();
-        vm.startPrank(timelock);
-        srcStrategy.setNextPool(IPool(address(migrator)), dstStrategy.seriesId());
-        vm.stopPrank();
+        vm.prank(timelock);
+        srcStrategy.setNextPool(IPool(address(migrator)), srcStrategy.seriesId());
     }
 }
 
-contract StartPoolTest is SetNextPoolState {
-    event Migrated(IStrategy indexed srcStrategy, IStrategy indexed dstStrategy, uint256 baseTokens);
-    error FYTokenMismatch(IFYToken srcFYToken, IFYToken dstFYToken);
-
-    function testMintAuth() public {
-        console2.log("migrator.mint(...) auth revert");
-        // vm.expectRevert(bytes("Access Denied"));
-        migrator.mint(IStrategy(address(srcStrategy)), address(0), 0, 0);
-    }
-
-    function testFYTokenMismatch() public {
-        console2.log("srcStrategy.startPool(dstStrategy, exchange)");
-        vm.startPrank(address(srcStrategy));
-        // vm.expectRevert(FYTokenMismatch.selector);
-        migrator.mint(
-            IStrategy(address(srcStrategy)),
-            address(0),
-            0,
-            uint160(bytes20(address(srcStrategy))) // srcStrategy has a different fyToken from dstStrategy, with which we prepared the migrator.
-        );
-        vm.stopPrank();
-        
-    }
-
+contract SetNextPoolStateTest is SetNextPoolState {
     function testStartPool() public {
-        console2.log("srcStrategy.startPool(dstStrategy, exchange)");
+        console2.log("srcStrategy.startPool(,,,)");
+        uint256 migratedBase = baseToken.balanceOf(address(srcStrategy));
 
-        vm.expectEmit(true, true, true, false);
-        emit Migrated(
-            IStrategy(address(srcStrategy)),
-            IStrategy(address(dstStrategy)),
-            baseToken.balanceOf(address(srcStrategy))
-        );
 
-        vm.startPrank(timelock);
-        srcStrategy.startPool(
-            uint256(bytes32(bytes20(address(dstStrategy)))),
-            uint256(bytes32(bytes20(address(exchange))))
-        );
-        vm.stopPrank();
+        vm.prank(timelock);
+        srcStrategy.startPool(0,0);
 
         // srcStrategy has no base
         assertEq(baseToken.balanceOf(address(srcStrategy)), 0);
-        // migrator has no base
-        assertEq(baseToken.balanceOf(address(migrator)), 0);
-        // exchange registered the migration
-        (IStrategy dstStrategy_,) = exchange.relativeValues(srcStrategy);
-        assertFalse(address(dstStrategy_) == address(0));
-
-        // Test that the migrator clears state
-        assertEq(migrator.totalSupply(), 0);
-        assertEq(address(migrator.fyToken()), address(0));
-        assertEq(address(migrator.base()), address(0));
+        // migrator has the base
+        assertEq(baseToken.balanceOf(address(migrator)), migratedBase);
     }
 }

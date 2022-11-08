@@ -12,7 +12,7 @@ import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "./deprecated/YieldMathExtensions.sol";
+import "./YieldMathExtensions.sol";
 
 
 library DivUp {
@@ -25,7 +25,7 @@ library DivUp {
 }
 
 /// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
-contract Strategy is AccessControl, ERC20Rewards {
+contract StrategyV1 is AccessControl, ERC20Rewards {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using YieldMathExtensions for IPool;
@@ -204,7 +204,7 @@ contract Strategy is AccessControl, ERC20Rewards {
 
         if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
 
-        // invariants[address(pool_)] = pool_.invariant();   // Cache the invariant to help the frontend calculate profits
+        invariants[address(pool_)] = YieldMathExtensions.invariant(pool_);   // Cache the invariant to help the frontend calculate profits
         emit PoolStarted(address(pool_));
     }
 

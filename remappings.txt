@@ -1,4 +1,5 @@
+forge-std/=lib/forge-std/src/
+erc3156=lib/ERC3156
 @yield-protocol/utils-v2=lib/yield-utils-v2
 @yield-protocol/vault-v2=lib/vault-v2/packages/foundry
 @yield-protocol/yieldspace-tv=lib/yieldspace-tv
-erc3156=lib/vault-v2/packages/foundry/lib/ERC3156
