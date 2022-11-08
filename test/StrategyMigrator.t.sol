@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
-import "../contracts/draft/StrategyMigrator.sol";
+import "../contracts/StrategyMigrator.sol";
 import "../contracts/interfaces/IStrategy.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
@@ -26,7 +26,7 @@ abstract contract ZeroState is Test {
     IERC20Metadata sharesToken;
     IERC20Metadata baseToken;
     IFYToken fyToken;
-    Migrator migrator;
+    StrategyMigrator migrator;
 
     function setUp() public virtual {
         vm.createSelectFork('mainnet');
