@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
+import "./StrategyMigrator.sol";
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
 import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
@@ -27,8 +28,15 @@ struct EjectedSeries {
     uint128 cached;
 }
 
-/// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
-contract Strategy is AccessControl, ERC20Rewards {
+/// @dev The Strategy contract allows liquidity providers to provide liquidity in underlying
+/// and receive strategy tokens that represent a stake in a YieldSpace pool contract.
+/// Upon maturity, the strategy can `divest` from the mature pool, becoming a proportional
+/// ownership underlying vault. When not invested, the strategy can `invest` into a Pool using
+/// all its underlying.
+/// The strategy can also `eject` from a Pool before maturity, immediately converting its assets
+/// to underlying as much as possible. If any fyToken can't be exchanged for underlying, the
+/// strategy will hold them until maturity when `redeemEjected` can be used.
+contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
@@ -47,27 +55,36 @@ contract Strategy is AccessControl, ERC20Rewards {
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
-    IERC20 public immutable base;                // Base token for this strategy
+    // IERC20 public immutable base;             // Base token for this strategy (inherited from StrategyMigrator)
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
 
     bytes12 public vaultId;                      // VaultId for the Strategy debt
     bytes6 public seriesId;                      // Identifier for the current seriesId
-    IFYToken public fyToken;                     // Current fyToken for this strategy
+    // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
     IPool public pool;                           // Current pool that this strategy invests in
     uint256 public cachedBase;                   // Base tokens owned by the strategy after the last operation
 
     EjectedSeries public ejected;                // In emergencies, the strategy can keep fyToken of one series
 
-    constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
-        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
-    { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
-        
-        base = base_;
-        baseId = baseId_;
-        baseJoin = baseJoin_;
-
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, bytes6 seriesId_)
+        ERC20Rewards(name, symbol, decimals)
+        StrategyMigrator(
+            IERC20(ladle_.cauldron().series(seriesId).fyToken.underlying()),
+            IFYToken(ladle_.cauldron().series(seriesId).fyToken))
+    {
         ladle = ladle_;
         cauldron = ladle_.cauldron();
+
+        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
+        // Deploy with any series matching the desired base in any other case
+        seriesId = seriesId_;
+        fyToken = cauldron.series(seriesId).fyToken;
+
+        base = IERC20(fyToken.underlying());
+        baseId = fyToken.underlyingId();
+        baseJoin = address(ladle.joins(baseId));
+
+        _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
 
     modifier poolSelected() {
@@ -127,16 +144,33 @@ contract Strategy is AccessControl, ERC20Rewards {
 
     // ----------------------- STATE CHANGES --------------------------- //
 
+    /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
+    function mint(address, address, uint256, uint256)
+        external
+        override
+        auth
+        returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
+    {
+        require (seriesId != bytes6(0), "Migration disabled");
+        baseIn = minted = this.init(msg.sender);
+        fyTokenIn = 0;
+    }
+
     /// @dev Mint the first strategy tokens, without investing
     function init(address to)
         external
         auth
+        returns (uint256 minted)
     {
+        // Delete seriesId and fyToken, disabling any further migrations
+        delete seriesId;
+        delete fyToken;
+
         require (_totalSupply == 0, "Already initialized");
-        cachedBase = base.balanceOf(address(this));
-        require (cachedBase > 0, "Not enough base in");
+        cachedBase = minted = base.balanceOf(address(this));
+        require (minted > 0, "Not enough base in");
         // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
-        _mint(to, cachedBase);
+        _mint(to, minted);
     }
 
     /// @dev Start the strategy investments in the next pool

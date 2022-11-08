@@ -8,7 +8,7 @@ import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
 
 /// @dev The Migrator contract poses as a Pool to receive all assets from a Strategy
 /// during a roll operation.
-contract Migrator {
+contract StrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
     IERC20 public base;
@@ -24,6 +24,7 @@ contract Migrator {
     /// @dev Mock pool mint. Called within `startPool`. This contract must hold 1 wei of base.
     function mint(address, address, uint256, uint256)
         external
+        virtual
         returns (uint256, uint256, uint256)
     {
         return (0, 0, 0);

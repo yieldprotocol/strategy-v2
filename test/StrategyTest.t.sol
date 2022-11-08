@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
-import "../contracts/Strategy.sol";
+import "../contracts/deprecated/StrategyV1.sol";
 import "../contracts/mocks/VaultMock.sol";
 import "../contracts/mocks/BaseMock.sol";
 import "../contracts/mocks/FYTokenMock.sol";
@@ -25,7 +25,7 @@ abstract contract ZeroTest is Test {
     address user1Acc;
     address user2Acc;
 
-    Strategy strategy;
+    StrategyV1 strategy;
     VaultMock vault;
     VaultMock vault2;
     BaseMock base;
@@ -101,7 +101,7 @@ abstract contract ZeroTest is Test {
         fyTokenMock2.mint(address(pool2), 10000e18);
         pool1.sellFYToken(address(0), 0);
         pool2.sellFYToken(address(0), 0);
-        strategy = new Strategy(
+        strategy = new StrategyV1(
             "Strategy Token",
             "STR",
             ILadle(address(vault)),

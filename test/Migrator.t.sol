@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
-import "../contracts/draft/Migrator.sol";
+import "../contracts/draft/StrategyMigrator.sol";
 import "../contracts/interfaces/IStrategy.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
@@ -37,7 +37,7 @@ abstract contract ZeroState is Test {
         fyToken = IFYToken(address(srcPool.fyToken()));
         sharesToken = srcPool.sharesToken();
 
-        migrator = new Migrator(baseToken, fyToken);
+        migrator = new StrategyMigrator(baseToken, fyToken);
 
         vm.label(address(srcStrategy), "srcStrategy");
         vm.label(address(srcPool), "srcPool");
