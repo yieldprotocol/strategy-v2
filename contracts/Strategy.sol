@@ -87,7 +87,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
 
-    modifier poolSelected() {
+    modifier invested() {
         require (
             pool != IPool(address(0)),
             "Pool not selected"
@@ -95,7 +95,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         _;
     }
 
-    modifier poolNotSelected() {
+    modifier divested() {
         require (
             pool == IPool(address(0)),
             "Pool selected"
@@ -107,7 +107,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice Use with extreme caution, only for Ladle replacements
     function setYield(ILadle ladle_)
         external
-        poolNotSelected
+        divested
         auth
     {
         ladle = ladle_;
@@ -120,7 +120,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
     function setTokenId(bytes6 baseId_)
         external
-        poolNotSelected
+        divested
         auth
     {
         require(
@@ -135,7 +135,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice Use with extreme caution, only for Join replacements
     function resetTokenJoin()
         external
-        poolNotSelected
+        divested
         auth
     {
         baseJoin = address(ladle.joins(baseId));
@@ -180,7 +180,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     function invest(bytes6 seriesId_, uint256 minRatio, uint256 maxRatio)
         external
         auth
-        poolNotSelected
+        divested
     {
         require (_totalSupply > 0, "Init Strategy first");
 
@@ -228,7 +228,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @dev Divest out of a pool once it has matured
     function divest()
         external
-        poolSelected
+        invested
     {
         // Caching
         IPool pool_ = pool;
@@ -308,7 +308,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @dev Redeem ejected fyToken in the strategy for base
     function redeemEjected(uint256 redeemedFYToken)
         external
-        poolNotSelected
+        divested
     {
         // Caching
         IFYToken fyToken_ = cauldron.series(ejected.seriesId).fyToken;
@@ -332,7 +332,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to, uint256 minRatio, uint256 maxRatio)
         external
-        poolSelected
+        invested
         returns (uint256 minted)
     {
         // Caching
@@ -377,7 +377,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
         external
-        poolSelected
+        invested
         returns (uint256 withdrawal)
     {
         // Caching
@@ -424,7 +424,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
     function mintDivested(address to)
         external
-        poolNotSelected
+        divested
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
@@ -441,7 +441,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burnDivested(address baseTo, address ejectedFYTokenTo)
         external
-        poolNotSelected
+        divested
         returns (uint256 withdrawal)
     {
         // strategy * burnt/supply = withdrawal
