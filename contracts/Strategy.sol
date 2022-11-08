@@ -8,11 +8,9 @@ import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
 import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "./deprecated/YieldMathExtensions.sol";
 
 
 library DivUp {
@@ -24,7 +22,7 @@ library DivUp {
     }
 }
 
-struct Ejected {
+struct EjectedSeries {
     bytes6 seriesId;
     uint128 cached;
 }
@@ -33,7 +31,6 @@ struct Ejected {
 contract Strategy is AccessControl, ERC20Rewards {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
-    using YieldMathExtensions for IPool;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
@@ -41,22 +38,25 @@ contract Strategy is AccessControl, ERC20Rewards {
     event YieldSet(ILadle ladle, ICauldron cauldron);
     event TokenJoinReset(address join);
     event TokenIdSet(bytes6 id);
-    event Invested(address pool);
-    event Divested(address pool);
 
-    IERC20 public immutable base;                // Base token for this strategy
-    bytes6 public baseId;                        // Identifier for the base token in Yieldv2
-    address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
+    event Invested(address indexed pool, uint256 baseInvested, uint256 lpTokensObtained);
+    event Divested(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained);
+    event Ejected(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained, uint256 fyTokenObtained);
+    event Redeemed(bytes6 indexed seriesId, uint256 redeemedFYToken, uint256 receivedBase);
+
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
+    bytes6 public baseId;                        // Identifier for the base token in Yieldv2
+    IERC20 public immutable base;                // Base token for this strategy
+    address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
 
+    bytes12 public vaultId;                      // VaultId for the Strategy debt
     bytes6 public seriesId;                      // Identifier for the current seriesId
     IFYToken public fyToken;                     // Current fyToken for this strategy
     IPool public pool;                           // Current pool that this strategy invests in
-    bytes12 public vaultId;                      // VaultId for the Strategy debt
     uint256 public cachedBase;                   // Base tokens owned by the strategy after the last operation
 
-    Ejected public ejected;                      // In emergencies, the strategy can keep fyToken of one series
+    EjectedSeries public ejected;                // In emergencies, the strategy can keep fyToken of one series
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
         ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
@@ -82,14 +82,6 @@ contract Strategy is AccessControl, ERC20Rewards {
         require (
             pool == IPool(address(0)),
             "Pool selected"
-        );
-        _;
-    }
-
-    modifier afterMaturity() {
-        require (
-            uint32(block.timestamp) >= fyToken.maturity(),
-            "Only after maturity"
         );
         _;
     }
@@ -142,7 +134,8 @@ contract Strategy is AccessControl, ERC20Rewards {
     {
         require (_totalSupply == 0, "Already initialized");
         cachedBase = base.balanceOf(address(this));
-        require (cachedBase > 0, "Not enough base in"); // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
+        require (cachedBase > 0, "Not enough base in");
+        // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
         _mint(to, cachedBase);
     }
 
@@ -156,9 +149,11 @@ contract Strategy is AccessControl, ERC20Rewards {
         poolNotSelected
     {
         require (_totalSupply > 0, "Init Strategy first");
+
         // Caching
-        IPool pool_ =  ladle.pools(seriesId_);
+        IPool pool_ =  IPool(ladle.pools(seriesId_));
         IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
+        uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
 
@@ -169,37 +164,42 @@ contract Strategy is AccessControl, ERC20Rewards {
         //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
 
         // The Pool mints based on cached values, not actual ones.
-        uint256 baseInPool = pool_.getBaseReserves(address(pool_));
-        uint256 fyTokenInPool = pool_.getFYTokenReserves(address(pool_)) - pool_.totalSupply();
+        uint256 baseInPool = pool_.getBaseBalance();
+        uint256 fyTokenInPool = pool_.getFYTokenBalance() - pool_.totalSupply();
 
-        uint256 baseToPool = (cachedBase * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
-        uint256 fyTokenToPool = cachedBase - baseToPool;        // fyTokenToPool is rounded down
+        uint256 baseToPool = (cached_ * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
+        uint256 fyTokenToPool = cached_ - baseToPool;        // fyTokenToPool is rounded down
 
         // Borrow fyToken with underlying as collateral
-        vaultId = ladle.build(seriesId_, baseId, 0);
+        (vaultId,) = ladle.build(seriesId_, baseId, 0);
         base.safeTransfer(baseJoin, fyTokenToPool);
-        ladle.pour(vaultId, address(pool_), fyTokenToPool, fyTokenToPool);
+        ladle.pour(vaultId, address(pool_), fyTokenToPool.i128(), fyTokenToPool.i128());
+
+        // In the edge case that we have ejected from a pool, and then invested on another pool for 
+        // the same series, we could reuse the fyToken. However, that is complex and `eject` should
+        // have minimized the amount of available fyToken.
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
-        pool_.mint(address(this), address(this), minRatio, maxRatio);
+        (,, uint256 lpTokenMinted) = pool_.mint(address(this), address(this), minRatio, maxRatio);
 
         // Update state variables
         seriesId = seriesId_;
         fyToken = fyToken_;
         pool = pool_;
 
-        emit Invested(address(pool_));
+        emit Invested(address(pool_), cached_, lpTokenMinted);
     }
 
     /// @dev Divest out of a pool once it has matured
     function divest()
         external
-        afterMaturity
+        poolSelected
     {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
+        require (uint32(block.timestamp) >= fyToken_.maturity(), "Only after maturity");
 
         uint256 toDivest = pool_.balanceOf(address(this));
         
@@ -210,11 +210,12 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenFromBurn);
         uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
+        // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
         // Reset the base cache
-        cachedBase = baseFromBurn + baseFromRedeem;
+        cachedBase = base.balanceOf(address(this));
 
-        emit Divested(address(pool_));
+        emit Divested(address(pool_), toDivest, baseFromBurn + baseFromRedeem);
 
         // Update state variables
         delete seriesId;
@@ -223,13 +224,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         delete vaultId;
     }
 
-    /// @dev Divest out of a pool at any time, keeping the fyToken in the strategy
+    /// @dev Divest out of a pool at any time. The obtained fyToken will be used to repay debt.
+    /// Any surplus will be kept in the contract until maturity, at which point `redeemEjected`
+    /// should be called.
     function eject(uint256 minRatio, uint256 maxRatio)
         external
         auth
     {
-        // It would be complex to deal with multiple concurrent ejections
-        require (ejected.seriesId == bytes6(0), "Already ejected");
+        // It would be complex to deal with concurrent ejections for different fyToken
+        require (ejected.seriesId == bytes6(0) || ejected.seriesId == seriesId, "Already ejected");
 
         // Caching
         IPool pool_ = pool;
@@ -244,19 +247,20 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
         uint256 toRepay = debt < fyTokenReceived ? fyTokenReceived : debt;
-        fyToken.safeTransfer(address(fyToken), toRepay);
-        ladle.pour(vaultId, address(this), toRepay, toRepay);
+        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
+        ladle.pour(vaultId, address(this), -(toRepay).i128(), -(toRepay).i128());
+        // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
         // Reset the base cache
-        cachedBase = baseReceived + toRepay;
+        cachedBase = base.balanceOf(address(this));
 
-        // If there are any left, reset the ejected fyToken cache
-        if (fyTokenReceived - toRepay > 0) {
-            ejected.seriesId = seriesId;
-            ejected.cached = fyTokenReceived - toRepay;
+        // If there are any left, reset or update the ejected fyToken cache
+        if (fyTokenReceived - toRepay > 0) {                      // if all fyToken were used we don't reset or update
+            ejected.seriesId = seriesId;                          // if (ejected.seriesId == seriesId), this has no effect
+            ejected.cached += (fyTokenReceived - toRepay).u128(); // if (ejected.seriesId != seriesId), ejected.cached should be 0
         }
         
-        emit Divested(address(pool_));
+        emit Ejected(address(pool_), toDivest, baseReceived + toRepay, fyTokenReceived - toRepay);
 
         // Update state variables
         delete seriesId;
@@ -270,40 +274,22 @@ contract Strategy is AccessControl, ERC20Rewards {
     /// @dev Redeem ejected fyToken in the strategy for base
     function redeemEjected(uint256 redeemedFYToken)
         external
+        poolNotSelected
     {
         // Caching
         IFYToken fyToken_ = cauldron.series(ejected.seriesId).fyToken;
         require (address(fyToken_) != address(0), "Series not found");
 
-        // Burn lpTokens
+        // Redeem fyToken
        uint256 receivedBase = fyToken_.redeem(address(this), redeemedFYToken);
 
-        // Reset ejected if done
-        if ((ejected.cached -= redeemedFYToken) == 0) delete ejected;
+        // Update the base cache
+        cachedBase += receivedBase;
 
-        emit Sold(ejected.seriesId, redeemedFYToken, receivedBase);
-    }
+        // Update ejected and reset if done
+        if ((ejected.cached -= redeemedFYToken.u128()) == 0) delete ejected;
 
-    /// @dev Sell ejected fyToken in the strategy for base
-    function sellEjected(uint256 soldFYToken, uint256 minBaseObtained)
-        external
-        auth
-    {
-        // Caching
-        IFYToken fyToken_ = cauldron.series(ejected.seriesId).fyToken;
-        require (address(fyToken_) != address(0), "Series not found");
-
-        IPool pool_ = IPool(ladle.pools(ejected.seriesId));
-        require (address(pool_) != address(0), "Pool not found");
-
-        // Sell fyToken
-        IERC20(address(fyToken_)).safeTransfer(address(pool_), soldFYToken);
-        uint256 receivedBase = pool_.sellFYToken(address(this), minBaseObtained.u128());
-
-        // Reset ejected if done
-        if ((ejected.cached -= soldFYToken) == 0) delete ejected;
-
-        emit Sold(ejected.seriesId, soldFYToken, receivedBase);
+        emit Redeemed(ejected.seriesId, redeemedFYToken, receivedBase);
     }
 
     // ----------------------- MINT & BURN --------------------------- //
@@ -318,11 +304,11 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
+        uint256 cached_ = cachedBase;
 
         // minted = supply * value(deposit) / value(strategy)
 
         // Find how much was deposited
-        uint256 cached_ = cachedBase;
         uint256 deposit = base.balanceOf(address(this)) - cached_;
 
         // Update the base cache
@@ -337,15 +323,15 @@ contract Strategy is AccessControl, ERC20Rewards {
         _mint(to, minted);
 
         // Now, put the funds into the Pool
-        uint256 baseInPool = pool_.getBaseReserves(address(pool_));
-        uint256 fyTokenInPool = pool_.getFYTokenReserves(address(pool_)) - pool_.totalSupply();
+        uint256 baseInPool = pool_.getBaseBalance();
+        uint256 fyTokenInPool = pool_.getFYTokenBalance() - pool_.totalSupply();
 
         uint256 baseToPool = (cachedBase * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
         uint256 fyTokenToPool = cachedBase - baseToPool;        // fyTokenToPool is rounded down
 
         // Borrow fyToken with underlying as collateral
         base.safeTransfer(baseJoin, fyTokenToPool);
-        ladle.pour(vaultId, address(pool_), fyTokenToPool, fyTokenToPool);
+        ladle.pour(vaultId, address(pool_), fyTokenToPool.i128(), fyTokenToPool.i128());
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
@@ -363,11 +349,11 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
+        uint256 cached_ = cachedBase;
 
         // strategy * burnt/supply = withdrawal
 
         // Burn strategy tokens
-        uint256 cached_ = cachedBase;
         uint256 burnt = _balanceOf[address(this)];
         withdrawal = cached_ * burnt / _totalSupply;
         _burn(address(this), burnt);
@@ -382,12 +368,12 @@ contract Strategy is AccessControl, ERC20Rewards {
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
         uint256 toRepay = debt < fyTokenReceived ? fyTokenReceived : debt;
-        fyToken_.safeTransfer(address(fyToken_), toRepay);
-        ladle.pour(vaultId, address(this), toRepay, toRepay);
+        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
+        ladle.pour(vaultId, address(this), -(toRepay.i128()), -(toRepay.i128()));
 
         // Sell any fyToken that are left
         uint256 toSell = fyTokenReceived - toRepay;
-        int256 baseFromSale;
+        uint256 baseFromSale;
         if (toSell > 0) {
             IERC20(address(fyToken_)).safeTransfer(address(pool_), toSell);
             baseFromSale = pool_.sellFYToken(address(this), 0);
@@ -397,11 +383,7 @@ contract Strategy is AccessControl, ERC20Rewards {
         require (baseFromBurn + baseFromSale >= minBaseReceived, "Not enough base obtained");
 
         // If we have ejected fyToken, we we give them out in the same proportion
-        if (ejected.seriesId != bytes6(0)){
-            uint256 givenFYToken = ejected.cached * burnt / _totalSupply;
-            IERC20(address(fyToken_)).safeTransfer(ejectedFYTokenTo, givenFYToken);
-            ejected.cached -= givenFYToken;
-        }
+        if (ejected.seriesId != bytes6(0)) _transferEjected(ejectedFYTokenTo, ejected.cached * burnt / _totalSupply);
     }
 
     /// @dev Mint strategy tokens with base tokens. It can be called only when a pool is not selected.
@@ -436,10 +418,17 @@ contract Strategy is AccessControl, ERC20Rewards {
         base.safeTransfer(baseTo, withdrawal);
 
         // If we have ejected fyToken, we we give them out in the same proportion
-        if (ejected.seriesId != bytes6(0)){
-            uint256 givenFYToken = ejected.cached * burnt / _totalSupply;
-            IERC20(address(fyToken_)).safeTransfer(ejectedFYTokenTo, givenFYToken);
-            ejected.cached -= givenFYToken;
-        }
+        if (ejected.seriesId != bytes6(0)) _transferEjected(ejectedFYTokenTo, ejected.cached * burnt / _totalSupply);
+    }
+
+    /// @dev Transfer out fyToken from the ejected cache
+    function _transferEjected(address to, uint256 amount)
+        internal
+        returns (bool)
+    {
+            IFYToken fyToken_ = cauldron.series(ejected.seriesId).fyToken;
+            require (address(fyToken_) != address(0), "Series not found"); // TODO: remove this require and put a try/catch in the transfer, to make sure we don't brick.
+            IERC20(address(fyToken_)).safeTransfer(to, amount);
+            ejected.cached -= amount.u128();
     }
 }
