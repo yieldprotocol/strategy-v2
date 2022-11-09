@@ -244,7 +244,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         (, uint256 baseFromBurn, uint256 fyTokenFromBurn) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
         
         // Redeem any fyToken
-        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenFromBurn);
+        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenFromBurn); // TODO: Necessary?
         uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
@@ -420,7 +420,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         // Slippage
         require (baseFromBurn + baseFromSale >= minBaseReceived, "Not enough base obtained");
 
-        // If we have ejected fyToken, we we give them out in the same proportion
+        // If we have ejected fyToken, we give them out in the same proportion
         if (ejected.seriesId != bytes6(0)) _transferEjected(ejectedFYTokenTo, ejected.cached * burnt / _totalSupply);
     }
 
