@@ -30,6 +30,14 @@ contract StrategyMigrator {
         return (0, 0, 0);
     }
 
+    /// @dev Mock pool burn and make it revert so that `endPool`never suceeds, and `burnForBase` can never be called.
+    function burn(address, address, uint256, uint256)
+        external
+        returns  (uint256, uint256, uint256)
+    {
+        revert();
+    }
+
     /// @dev Mock pool balanceOf
     function totalSupply(address) external view returns(uint256) {
         return 0;
