@@ -190,6 +190,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
+        // TODO: If there are ejected fyToken, consider restricting investing only to series of the same fyToken
+        // There are some risks of getting stuck until maturity, but also simplifies the state machine
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
@@ -381,7 +383,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         returns (uint256 withdrawal)
     {
         // TODO: What to do after maturity?
-        
+
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
