@@ -8,7 +8,10 @@ import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
 
 /// @dev The Migrator contract poses as a Pool to receive all assets from a Strategy
 /// during a roll operation.
-contract StrategyMigrator {
+/// @notice The Pool and fyToken must exist. The fyToken needs to be not mature, and the pool needs to have no fyToken in it.
+/// There will be no state changes on pool or fyToken.
+/// TODO: For this to work, the implementing class must inherit from ERC20 and make sure that totalSupply is not zero after the `mint` call.
+abstract contract StrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
     IERC20 public base;
@@ -36,11 +39,6 @@ contract StrategyMigrator {
         returns  (uint256, uint256, uint256)
     {
         revert();
-    }
-
-    /// @dev Mock pool balanceOf
-    function totalSupply(address) external view returns(uint256) {
-        return 0;
     }
 
     /// @dev Mock pool maturity

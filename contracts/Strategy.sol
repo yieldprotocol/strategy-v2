@@ -13,7 +13,6 @@ import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
-
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
@@ -66,23 +65,22 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
 
     EjectedSeries public ejected;                // In emergencies, the strategy can keep fyToken of one series
 
-    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, bytes6 seriesId_)
+    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IFYToken fyToken_)
         ERC20Rewards(name, symbol, decimals)
         StrategyMigrator(
-            IERC20(ladle_.cauldron().series(seriesId).fyToken.underlying()),
-            IFYToken(ladle_.cauldron().series(seriesId).fyToken))
+            IERC20(fyToken_.underlying()),
+            fyToken_)
     {
         ladle = ladle_;
         cauldron = ladle_.cauldron();
 
         // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
         // Deploy with any series matching the desired base in any other case
-        seriesId = seriesId_;
-        fyToken = cauldron.series(seriesId).fyToken;
+        fyToken = fyToken_;
 
-        base = IERC20(fyToken.underlying());
-        baseId = fyToken.underlyingId();
-        baseJoin = address(ladle.joins(baseId));
+        base = IERC20(fyToken_.underlying());
+        baseId = fyToken_.underlyingId();
+        baseJoin = address(ladle_.joins(baseId));
 
         _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
@@ -151,7 +149,6 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         auth
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
-        require (seriesId != bytes6(0), "Migration disabled");
         baseIn = minted = this.init(msg.sender);
         fyTokenIn = 0;
     }
