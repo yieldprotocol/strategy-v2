@@ -187,7 +187,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
         uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
-        // TODO: If there are ejected fyToken, consider restricting investing only to series of the same fyToken
+        // TODO: If there are ejected fyToken, consider restricting investing only to series of the same fyToken. Ask Allan.
         // There are some risks of getting stuck until maturity, but also simplifies the state machine
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
@@ -368,7 +368,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
 
         // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
         base.safeTransfer(address(pool_), baseToPool);
-        pool_.mint(address(this), address(this), minRatio, maxRatio); // TODO: Can we do better slippage than this?
+        pool_.mint(address(this), address(this), minRatio, maxRatio); // TODO: Can we do better slippage than this? Ask Allan.
     }
 
     /// @dev Burn strategy tokens to withdraw lp tokens. The lp tokens obtained won't be of the same pool that the investor deposited,

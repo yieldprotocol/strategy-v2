@@ -32,7 +32,7 @@ abstract contract ZeroState is Test {
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
     IStrategy srcStrategy = IStrategy(0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295);
     address srcStrategyHolder = 0x9185Df15078547055604F5c0B02fc1C8D93594A5;
-    IStrategy sampleStrategy = IStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
+    IStrategy donorStrategy = IStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
     IPool srcPool;
     IFYToken srcFYToken;
     bytes6 srcSeriesId;
@@ -52,8 +52,8 @@ abstract contract ZeroState is Test {
         srcPool = srcStrategy.pool();
         srcFYToken = IFYToken(address(srcPool.fyToken()));
         
-        dstSeriesId = sampleStrategy.seriesId();
-        dstPool = sampleStrategy.pool();
+        dstSeriesId = donorStrategy.seriesId();
+        dstPool = donorStrategy.pool();
         dstFYToken = IFYToken(address(dstPool.fyToken()));
 
         baseToken = srcPool.baseToken();
