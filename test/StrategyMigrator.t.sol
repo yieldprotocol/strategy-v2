@@ -4,6 +4,7 @@ import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "../contracts/Strategy.sol";
 import "../contracts/interfaces/IStrategy.sol";
+import "../contracts/deprecated/IStrategyV1.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
@@ -30,9 +31,9 @@ abstract contract ZeroState is Test {
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     // We will warp to the December to June roll, and migrate the MJD strategy to a contract impersonating the March series.
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    IStrategy srcStrategy = IStrategy(0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295);
+    IStrategyV1 srcStrategy = IStrategyV1(0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295);
     address srcStrategyHolder = 0x9185Df15078547055604F5c0B02fc1C8D93594A5;
-    IStrategy donorStrategy = IStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
+    IStrategyV1 donorStrategy = IStrategyV1(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
     IPool srcPool;
     IFYToken srcFYToken;
     bytes6 srcSeriesId;

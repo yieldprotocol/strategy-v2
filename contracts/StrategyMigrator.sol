@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.13;
 
+import "./interfaces/IStrategyMigrator.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
@@ -11,7 +12,7 @@ import "@yield-protocol/utils-v2/contracts/token/ERC20Permit.sol";
 /// @notice The Pool and fyToken must exist. The fyToken needs to be not mature, and the pool needs to have no fyToken in it.
 /// There will be no state changes on pool or fyToken.
 /// TODO: For this to work, the implementing class must inherit from ERC20 and make sure that totalSupply is not zero after the `mint` call.
-abstract contract StrategyMigrator {
+abstract contract StrategyMigrator is IStrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
     IERC20 public base;

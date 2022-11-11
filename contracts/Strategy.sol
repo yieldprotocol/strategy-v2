@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
+import "./interfaces/IStrategy.sol";
 import "./StrategyMigrator.sol";
 import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
@@ -22,11 +23,6 @@ library DivUp {
     }
 }
 
-struct EjectedSeries {
-    bytes6 seriesId;
-    uint128 cached;
-}
-
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in underlying
 /// and receive strategy tokens that represent a stake in a YieldSpace pool contract.
 /// Upon maturity, the strategy can `divest` from the mature pool, becoming a proportional
@@ -35,12 +31,17 @@ struct EjectedSeries {
 /// The strategy can also `eject` from a Pool before maturity, immediately converting its assets
 /// to underlying as much as possible. If any fyToken can't be exchanged for underlying, the
 /// strategy will hold them until maturity when `redeemEjected` can be used.
-contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator {
+contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
     using CastU128I128 for uint128;
+
+    struct EjectedSeries {
+        bytes6 seriesId;
+        uint128 cached;
+    }
 
     event YieldSet(ILadle ladle, ICauldron cauldron);
     event TokenJoinReset(address join);
