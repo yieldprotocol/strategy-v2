@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
-import "./IStrategyMigrator.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import {ILadle} from "vault-v2/interfaces/ILadle.sol";
+import {IERC20} from "yieldspace-tv/interfaces/IPool.sol";
+import {IPool} from "yieldspace-tv/interfaces/IPool.sol";
+import {ICauldron} from "vault-v2/interfaces/ICauldron.sol";
+import {IStrategyMigrator, IFYToken} from "./IStrategyMigrator.sol";
 
 
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in underlying

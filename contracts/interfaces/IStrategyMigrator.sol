@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.13;
 
-import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import {IERC20} from "yieldspace-tv/interfaces/IPool.sol";
+import {IFYToken} from "vault-v2/interfaces/IFYToken.sol";
 
 
 /// @dev The Migrator contract poses as a Pool to receive all assets from a Strategy

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.14;
 
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "@yield-protocol/yieldspace-tv/src/YieldMath.sol";
+import {IPool} from "yieldspace-tv/interfaces/IPool.sol";
+import {YieldMath, Math64x64, Exp64x64} from "yieldspace-tv/YieldMath.sol";
 
 
 library YieldMathExtensions {

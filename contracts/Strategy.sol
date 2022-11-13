@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
-import "./interfaces/IStrategy.sol";
-import "./StrategyMigrator.sol";
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
+import {ILadle} from "vault-v2/interfaces/ILadle.sol";
+// import {IERC20} from "yield-utils-v2/token/IERC20.sol";
+import {StrategyMigrator} from "./StrategyMigrator.sol";
+import {IPool, IERC20} from "yieldspace-tv/interfaces/IPool.sol";
+import {IFYToken} from "vault-v2/interfaces/IFYToken.sol";
+import {ICauldron} from "vault-v2/interfaces/ICauldron.sol";
+import {CastU128I128} from "yield-utils-v2/cast/CastU128I128.sol";
+import {CastU256I128} from "yield-utils-v2/cast/CastU256I128.sol";
+import {CastU256U128} from "yield-utils-v2/cast/CastU256U128.sol";
+import {ERC20Rewards} from "yield-utils-v2/token/ERC20Rewards.sol";
+import {AccessControl} from "yield-utils-v2/access/AccessControl.sol";
+import {SafeERC20Namer} from "yield-utils-v2/token/SafeERC20Namer.sol";
+import {MinimalTransferHelper} from "yield-utils-v2/token/MinimalTransferHelper.sol";
 
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
         // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html 
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
+        // https://docs.soliditylang.org/en/v0.8.9/types.html
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; }
     }
 }
 
@@ -209,7 +211,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         base.safeTransfer(baseJoin, fyTokenToPool);
         ladle.pour(vaultId, address(pool_), fyTokenToPool.i128(), fyTokenToPool.i128());
 
-        // In the edge case that we have ejected from a pool, and then invested on another pool for 
+        // In the edge case that we have ejected from a pool, and then invested on another pool for
         // the same series, we could reuse the fyToken. However, that is complex and `eject` should
         // have minimized the amount of available fyToken.
 
@@ -236,11 +238,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         require (uint32(block.timestamp) >= fyToken_.maturity(), "Only after maturity");
 
         uint256 toDivest = pool_.balanceOf(address(this));
-        
+
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
         (, uint256 baseFromBurn, uint256 fyTokenFromBurn) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
-        
+
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenFromBurn); // TODO: Necessary?
         uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
@@ -273,7 +275,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         IFYToken fyToken_ = fyToken;
 
         uint256 toDivest = pool_.balanceOf(address(this));
-        
+
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
         (, uint256 baseReceived, uint256 fyTokenReceived) = pool_.burn(address(this), address(this), minRatio, maxRatio);
@@ -293,7 +295,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
             ejected.seriesId = seriesId;                          // if (ejected.seriesId == seriesId), this has no effect
             ejected.cached += (fyTokenReceived - toRepay).u128(); // if (ejected.seriesId != seriesId), ejected.cached should be 0
         }
-        
+
         emit Ejected(address(pool_), toDivest, baseReceived + toRepay, fyTokenReceived - toRepay);
 
         // Update state variables
@@ -335,7 +337,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         invested
         returns (uint256 minted)
     {
-        // TODO: What to do after maturity? 
+        // TODO: What to do after maturity?
         // Caching
         IPool pool_ = pool;
         uint256 cached_ = cachedBase;
@@ -435,7 +437,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         cachedBase = cached_ + deposit;
 
         minted = _totalSupply * deposit / cached_;
-        
+
         _mint(to, minted);
     }
 

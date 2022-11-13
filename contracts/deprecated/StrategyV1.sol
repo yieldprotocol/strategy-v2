@@ -1,26 +1,28 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "./YieldMathExtensions.sol";
+import {ILadle} from "vault-v2/interfaces/ILadle.sol";
+import {IERC20} from "yield-utils-v2/token/IERC20.sol";
+import {IPool} from "yieldspace-tv/interfaces/IPool.sol";
+import {IFYToken} from "vault-v2/interfaces/IFYToken.sol";
+import {DataTypes} from "vault-v2/interfaces/DataTypes.sol";
+import {ICauldron} from "vault-v2/interfaces/ICauldron.sol";
+import {YieldMathExtensions} from "./YieldMathExtensions.sol";
+import {CastU128I128} from "yield-utils-v2/cast/CastU128I128.sol";
+import {CastU256I128} from "yield-utils-v2/cast/CastU256I128.sol";
+import {CastU256U128} from "yield-utils-v2/cast/CastU256U128.sol";
+import {ERC20Rewards} from "yield-utils-v2/token/ERC20Rewards.sol";
+import {AccessControl} from "yield-utils-v2/access/AccessControl.sol";
+import {SafeERC20Namer} from "yield-utils-v2/token/SafeERC20Namer.sol";
+import {MinimalTransferHelper} from "yield-utils-v2/token/MinimalTransferHelper.sol";
 
 
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
         // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html 
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
+        // https://docs.soliditylang.org/en/v0.8.9/types.html
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; }
     }
 }
 
@@ -57,9 +59,9 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
     mapping (address => uint128) public invariants; // Value of pool invariant at start time
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
-        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_)))
     { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
-        
+
         base = base_;
         baseId = baseId_;
         baseJoin = baseJoin_;
@@ -132,7 +134,7 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
     }
 
     /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, bytes6 seriesId_) 
+    function setNextPool(IPool pool_, bytes6 seriesId_)
         external
         auth
     {
@@ -218,11 +220,11 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
         IFYToken fyToken_ = fyToken;
 
         uint256 toDivest = pool_.balanceOf(address(this));
-        
+
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
         (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
-        
+
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);
         fyToken_.redeem(address(this), fyTokenDivested);

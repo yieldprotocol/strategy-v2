@@ -1,0 +1,425 @@
+[
+  {
+    "inputs": [],
+    "name": "MAX",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "ONE",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TWO",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "VAR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenAmount",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "baseInForFYTokenOut",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenAmount",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "baseOutForFYTokenIn",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "baseAmount",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "fyTokenInForBaseOut",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "baseAmount",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "fyTokenOutForBaseIn",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint256",
+        "name": "totalSupply",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      }
+    ],
+    "name": "invariant",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "maxBaseIn",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "maxBaseOut",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "maxFYTokenIn",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint128",
+        "name": "baseReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "fyTokenReserves",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "timeTillMaturity",
+        "type": "uint128"
+      },
+      {
+        "internalType": "int128",
+        "name": "ts",
+        "type": "int128"
+      },
+      {
+        "internalType": "int128",
+        "name": "g",
+        "type": "int128"
+      }
+    ],
+    "name": "maxFYTokenOut",
+    "outputs": [
+      {
+        "internalType": "uint128",
+        "name": "",
+        "type": "uint128"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  }
+]

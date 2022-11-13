@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
-import "forge-std/Test.sol";
-import "../contracts/Strategy.sol";
+import {Test} from "forge-std/Test.sol";
+import {Strategy} from "../contracts/Strategy.sol";
 
 // Deployed
 //   mint(4) -> init -> Divested ✓
