@@ -14,6 +14,7 @@ import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
+// TODO: Can we make this a fancy free function?
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
@@ -52,6 +53,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     event Ejected(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained, uint256 fyTokenObtained);
     event Redeemed(bytes6 indexed seriesId, uint256 redeemedFYToken, uint256 receivedBase);
 
+    // TODO: Global variables can be packed
+
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
     bytes6 public baseId;                        // Identifier for the base token in Yieldv2
@@ -88,16 +91,16 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     modifier invested() {
         require (
-            pool != IPool(address(0)),
-            "Pool not selected"
+            maturity != 0,
+            "Not invested"
         );
         _;
     }
 
     modifier divested() {
         require (
-            pool == IPool(address(0)),
-            "Pool selected"
+            maturity == 0,
+            "Not divested"
         );
         _;
     }
@@ -220,6 +223,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Update state variables
         seriesId = seriesId_;
         fyToken = fyToken_;
+        maturity = pool_.maturity();
         pool = pool_;
 
         emit Invested(address(pool_), cached_, lpTokenMinted);
@@ -233,7 +237,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
-        require (uint32(block.timestamp) >= fyToken_.maturity(), "Only after maturity");
+        require (uint32(block.timestamp) >= maturity, "Only after maturity");
 
         uint256 toDivest = pool_.balanceOf(address(this));
         
@@ -254,6 +258,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Update state variables
         delete seriesId;
         delete fyToken;
+        delete maturity;
         delete pool;
         delete vaultId;
     }
@@ -329,13 +334,52 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     // ----------------------- MINT & BURN --------------------------- //
 
     /// @dev Mint strategy tokens.
-    /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
+    /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to, uint256 minRatio, uint256 maxRatio)
         external
+        returns (uint256 minted)
+    {
+        uint256 maturity_ = maturity;
+
+        if (block.timestamp >= maturity_) {
+            this.divest();
+        }
+
+        if (maturity_ == 0) {
+            minted = _mintDivested(to);
+        } else {
+            minted = _mintInvested(to, minRatio, maxRatio);
+        }
+    }
+
+
+    /// @dev Burn strategy tokens to withdraw base tokens.
+    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
+    function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
+        external
+        returns (uint256 withdrawal)
+    {
+        uint256 maturity_ = maturity;
+
+        if (block.timestamp >= maturity_) {
+            this.divest();
+        }
+
+        if (maturity_ == 0) {
+            withdrawal = _burnDivested(baseTo, ejectedFYTokenTo);
+        } else {
+            withdrawal = _burnInvested(baseTo, ejectedFYTokenTo, minBaseReceived);
+        }
+    }
+
+    /// @dev Mint strategy tokens while invested in a pool.
+    /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
+    function _mintInvested(address to, uint256 minRatio, uint256 maxRatio)
+        internal
         invested
         returns (uint256 minted)
     {
-        // TODO: What to do after maturity? 
         // Caching
         IPool pool_ = pool;
         uint256 cached_ = cachedBase;
@@ -372,16 +416,14 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         pool_.mint(address(this), address(this), minRatio, maxRatio); // TODO: Can we do better slippage than this? Ask Allan.
     }
 
-    /// @dev Burn strategy tokens to withdraw lp tokens. The lp tokens obtained won't be of the same pool that the investor deposited,
-    /// if the strategy has swapped to another pool.
+    /// @dev Burn strategy tokens to withdraw base tokens.
+    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
-        external
+    function _burnInvested(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
+        internal
         invested
         returns (uint256 withdrawal)
     {
-        // TODO: What to do after maturity?
-
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
@@ -422,10 +464,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         if (ejected.seriesId != bytes6(0)) _transferEjected(ejectedFYTokenTo, ejected.cached * burnt / _totalSupply);
     }
 
-    /// @dev Mint strategy tokens with base tokens. It can be called only when a pool is not selected.
+    /// @dev Mint strategy tokens with base tokens. It can be called only when not invested.
     /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
-    function mintDivested(address to)
-        external
+    function _mintDivested(address to)
+        internal
         divested
         returns (uint256 minted)
     {
@@ -439,10 +481,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw base tokens. It can be called only when a pool is not selected.
+    /// @dev Burn strategy tokens to withdraw base tokens. It can be called when not invested.
+    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnDivested(address baseTo, address ejectedFYTokenTo)
-        external
+    function _burnDivested(address baseTo, address ejectedFYTokenTo)
+        internal
         divested
         returns (uint256 withdrawal)
     {

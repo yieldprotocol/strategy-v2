@@ -20,6 +20,9 @@ abstract contract StrategyMigrator is IStrategyMigrator {
     /// Mock pool fyToken - Must be set to a real fyToken registered to a series in the Cauldron, any will do
     IFYToken public fyToken;
 
+    /// Mock pool maturity - Its contents don't matter
+    uint32 public maturity;
+
     constructor(IERC20 base_, IFYToken fyToken_) {
         base = base_;
         fyToken = fyToken_;
@@ -40,11 +43,6 @@ abstract contract StrategyMigrator is IStrategyMigrator {
         returns  (uint256, uint256, uint256)
     {
         revert();
-    }
-
-    /// @dev Mock pool maturity
-    function maturity() external view returns(uint32) {
-        return 0;
     }
 
     /// @dev Mock pool getBaseBalance
