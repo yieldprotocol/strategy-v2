@@ -163,10 +163,6 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         auth
         returns (uint256 minted)
     {
-        // Delete seriesId and fyToken, disabling any further migrations
-        delete seriesId;
-        delete fyToken;
-
         require (_totalSupply == 0, "Already initialized");
         cachedBase = minted = base.balanceOf(address(this));
         require (minted > 0, "Not enough base in");
