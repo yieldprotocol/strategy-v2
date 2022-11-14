@@ -30,6 +30,7 @@ abstract contract ZeroState is Test {
     address alice = address(1);
     address bob = address(2);
 
+    address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
     DonorStrategy donorStrategy = DonorStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
     
@@ -85,7 +86,7 @@ abstract contract ZeroState is Test {
 contract ZeroStateTest is ZeroState {
     function testInit() public {
         console2.log("strategy.init()");
-        uint256 initAmount = 1e18;
+        uint256 initAmount = 10 ** baseToken.decimals();
         cash(baseToken, address(strategy), initAmount);
         track("bobStrategyTokens", strategy.balanceOf(bob));
 
@@ -104,10 +105,28 @@ contract ZeroStateTest is ZeroState {
         vm.expectRevert(bytes("Not enough base in"));
         vm.prank(alice);
         strategy.init(bob);
+    }
+}
 
-        // Test the strategy can add the dstStrategy as the next pool
-        assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
-        assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
+abstract contract DivestedState is ZeroState {
+    function setUp() public virtual override  {
+        super.setUp();
+        uint256 initAmount = 1000000 * 10 ** baseToken.decimals();
+        cash(baseToken, address(strategy), initAmount);
+
+        vm.prank(alice);
+        strategy.init(bob);
+    }
+}
+
+contract DivestedStateTest is DivestedState {
+    function testNoRepeatedInit() public {
+        console2.log("strategy.init()");
+        uint256 initAmount = 1e18;
+
+        vm.expectRevert(bytes("Already initialized"));
+        vm.prank(alice);
+        strategy.init(bob);
     }
 }
 
