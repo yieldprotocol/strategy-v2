@@ -143,6 +143,19 @@ contract DivestedStateTest is DivestedState {
 
         assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
     }
+
+    function testBurnDivested() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        assertGt(burnAmount, 0);
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        strategy.burn(alice, alice, 0);
+
+        assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
+    }
 }
 
 // Deployed
