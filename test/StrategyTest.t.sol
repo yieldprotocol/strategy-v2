@@ -96,6 +96,19 @@ contract ZeroStateTest is ZeroState {
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
         assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
     }
+
+    function testNoEmptyInit() public {
+        console2.log("strategy.init()");
+        uint256 initAmount = 0;
+
+        vm.expectRevert(bytes("Not enough base in"));
+        vm.prank(alice);
+        strategy.init(bob);
+
+        // Test the strategy can add the dstStrategy as the next pool
+        assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
+        assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
+    }
 }
 
 // Deployed
