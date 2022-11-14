@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
+import "forge-std/console2.sol";
 import "../contracts/Strategy.sol";
 
 interface DonorStrategy {
@@ -44,11 +45,12 @@ abstract contract ZeroState is Test {
     mapping (string => uint256) tracked;
 
     function cash(IERC20 token, address user, uint256 amount) public {
+        uint256 start = token.balanceOf(user);
         stdstore
             .target(address(token))
             .sig(token.balanceOf.selector)
             .with_key(user)
-            .checked_write(amount);
+            .checked_write(start + amount);
     }
 
     function track(string memory id, uint256 amount) public {
@@ -94,6 +96,7 @@ contract ZeroStateTest is ZeroState {
         strategy.init(bob);
 
         // Test the strategy can add the dstStrategy as the next pool
+        assertEq(strategy.cachedBase(), initAmount);
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
         assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
     }
@@ -127,6 +130,18 @@ contract DivestedStateTest is DivestedState {
         vm.expectRevert(bytes("Already initialized"));
         vm.prank(alice);
         strategy.init(bob);
+    }
+
+    function testMintDivested() public {
+        console2.log("strategy.mint()");
+        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        cash(baseToken, address(strategy), mintAmount);
+        vm.prank(alice);
+        strategy.mint(bob, 0, type(uint256).max);
+
+        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
     }
 }
 

@@ -163,6 +163,13 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         auth
         returns (uint256 minted)
     {
+        // Clear state variables from a potential migration
+        delete seriesId;
+        delete fyToken;
+        delete maturity;
+        delete pool;
+        delete vaultId;
+
         require (_totalSupply == 0, "Already initialized");
         cachedBase = minted = base.balanceOf(address(this));
         require (minted > 0, "Not enough base in");
@@ -337,9 +344,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         uint256 maturity_ = maturity;
 
-        if (block.timestamp >= maturity_) {
+        // If we are invested and past maturity, divest
+        if (maturity_ > 0 && block.timestamp >= maturity_) {
             this.divest();
         }
+
 
         if (maturity_ == 0) {
             minted = _mintDivested(to);
@@ -358,7 +367,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         uint256 maturity_ = maturity;
 
-        if (block.timestamp >= maturity_) {
+        // If we are invested and past maturity, divest
+        if (maturity_ > 0 && block.timestamp >= maturity_) {
             this.divest();
         }
 
@@ -469,7 +479,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         // minted = supply * value(deposit) / value(strategy)
         uint256 cached_ = cachedBase + ejected.cached; // We value ejected fyToken at 1:1
-        uint256 deposit = pool.balanceOf(address(this)) - cached_;
+        uint256 deposit = base.balanceOf(address(this)) - cached_;
         cachedBase = cached_ + deposit;
 
         minted = _totalSupply * deposit / cached_;
