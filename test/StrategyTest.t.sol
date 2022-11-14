@@ -40,12 +40,22 @@ abstract contract ZeroState is Test {
     IERC20Metadata sharesToken;
     Strategy strategy;
 
+    mapping (string => uint256) tracked;
+
     function cash(IERC20 token, address user, uint256 amount) public {
         stdstore
             .target(address(token))
             .sig(token.balanceOf.selector)
             .with_key(user)
             .checked_write(amount);
+    }
+
+    function track(string memory id, uint256 amount) public {
+        tracked[id] = amount;
+    }
+
+    function assertTrackPlusEq(string memory id, uint256 plus, uint256 amount) public {
+        assertEq(tracked[id] + plus, amount);
     }
 
     function setUp() public virtual {
@@ -75,13 +85,16 @@ abstract contract ZeroState is Test {
 contract ZeroStateTest is ZeroState {
     function testInit() public {
         console2.log("strategy.init()");
-        cash(baseToken, address(strategy), 1e18);
+        uint256 initAmount = 1e18;
+        cash(baseToken, address(strategy), initAmount);
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+
         vm.prank(alice);
         strategy.init(bob);
 
         // Test the strategy can add the dstStrategy as the next pool
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
-        assertEq(strategy.totalSupply(), 1e18);
+        assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
     }
 }
 
