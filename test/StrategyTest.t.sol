@@ -328,23 +328,28 @@ contract InvestedStateTest is InvestedState {
     function testBurnOnTiltedPool() public {}
 
     function testDivest() public {
-        console2.log("strategy.eject()");
-        uint256 ejectAmount = strategy.balanceOf(bob) / 2;
-        assertGt(ejectAmount, 0);
+        console2.log("strategy.divest()");
+        vm.warp(pool.maturity());
 
-        assertGt(pool.balanceOf(address(strategy)), 0);
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
 
-        vm.prank(alice);
-        strategy.eject(0, type(uint256).max);
+        strategy.divest();
 
         assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
 
-        //TODO: check other state changes
+        // State variables are reset
+        assertEq(strategy.seriesId(), bytes6(0));
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(uint256(strategy.maturity()), 0);
+        assertEq(address(strategy.pool()), address(0));
+        assertEq(bytes12(strategy.vaultId()), bytes12(0));
     }
 
     function testDivestOnTiltedPool() public {}
 
-    function testEjectInvested() public {
+    function testEject() public {
         console2.log("strategy.eject()");
         uint256 ejectAmount = strategy.balanceOf(bob) / 2;
         assertGt(ejectAmount, 0);

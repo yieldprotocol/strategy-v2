@@ -32,6 +32,13 @@ library DivUp {
 /// The strategy can also `eject` from a Pool before maturity, immediately converting its assets
 /// to underlying as much as possible. If any fyToken can't be exchanged for underlying, the
 /// strategy will hold them until maturity when `redeemEjected` can be used.
+
+/// TODO: Put these docs in the right spot.
+/// mint and burn are user functions. Users provide base and get strategy tokens on mint, and the reverse on burn. The strategy might be in different states while this happens.
+/// invest, divest and eject are governance functions (even if divest is open to all). They instruct the strategy what to do with the pooled user funds:
+/// invest: Only while divested. Put all the user funds in a pool. Become invested.
+/// divest: Only while invested on a mature pool. Pull all funds from the pool. Become divested.
+/// eject: Only while invested on a non-mature pool. Pull all funds from the pool. Become divested.
 contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
