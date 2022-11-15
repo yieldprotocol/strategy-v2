@@ -19,8 +19,8 @@ library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
         // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html 
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; } 
+        // https://docs.soliditylang.org/en/v0.8.9/types.html
+        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; }
     }
 }
 
@@ -57,9 +57,9 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
     mapping (address => uint128) public invariants; // Value of pool invariant at start time
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
-        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_))) 
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_)))
     { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
-        
+
         base = base_;
         baseId = baseId_;
         baseJoin = baseJoin_;
@@ -132,7 +132,7 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
     }
 
     /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, bytes6 seriesId_) 
+    function setNextPool(IPool pool_, bytes6 seriesId_)
         external
         auth
     {
@@ -218,11 +218,11 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
         IFYToken fyToken_ = fyToken;
 
         uint256 toDivest = pool_.balanceOf(address(this));
-        
+
         // Burn lpTokens
         IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
         (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
-        
+
         // Redeem any fyToken
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);
         fyToken_.redeem(address(this), fyTokenDivested);

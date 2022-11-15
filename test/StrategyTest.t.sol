@@ -27,14 +27,14 @@ abstract contract ZeroState is Test {
     // fyTokenReserves: 223191199910816266762851
     // totalSupply:     223191199910816266762851
 
-    address deployer = address(0);
-    address alice = address(1);
-    address bob = address(2);
+    address deployer = address(bytes20(keccak256("deployer")));
+    address alice = address(bytes20(keccak256("alice")));
+    address bob = address(bytes20(keccak256("bob")));
 
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
     DonorStrategy donorStrategy = DonorStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
-    
+
     bytes6 seriesId;
     IPool pool;
     IFYToken fyToken;
@@ -46,11 +46,7 @@ abstract contract ZeroState is Test {
 
     function cash(IERC20 token, address user, uint256 amount) public {
         uint256 start = token.balanceOf(user);
-        stdstore
-            .target(address(token))
-            .sig(token.balanceOf.selector)
-            .with_key(user)
-            .checked_write(start + amount);
+        deal(address(token), user, start + amount);
     }
 
     function track(string memory id, uint256 amount) public {
@@ -63,16 +59,21 @@ abstract contract ZeroState is Test {
 
     function setUp() public virtual {
         vm.createSelectFork('mainnet', 15741300);
-        
+
         seriesId = donorStrategy.seriesId();
         pool = donorStrategy.pool();
         fyToken = IFYToken(address(pool.fyToken()));
         baseToken = pool.baseToken();
         sharesToken = pool.sharesToken();
 
-        strategy = new Strategy("", "", baseToken.decimals(), ladle, fyToken);
+        // Strategy V2
+        strategy = new Strategy("StrategyTest.t.sol", "test", baseToken.decimals(), ladle, fyToken);
 
+        // Alice has init role
         strategy.grantRole(Strategy.init.selector, alice);
+
+        // Bob has invest role
+        strategy.grantRole(Strategy.invest.selector, bob);
 
         vm.label(deployer, "deployer");
         vm.label(alice, "alice");
@@ -86,9 +87,10 @@ abstract contract ZeroState is Test {
 }
 
 contract ZeroStateTest is ZeroState {
-    function testInit() public {
+    function testInitStrat() public {
         console2.log("strategy.init()");
         uint256 initAmount = 10 ** baseToken.decimals();
+
         cash(baseToken, address(strategy), initAmount);
         track("bobStrategyTokens", strategy.balanceOf(bob));
 
@@ -103,7 +105,6 @@ contract ZeroStateTest is ZeroState {
 
     function testNoEmptyInit() public {
         console2.log("strategy.init()");
-        uint256 initAmount = 0;
 
         vm.expectRevert(bytes("Not enough base in"));
         vm.prank(alice);
@@ -114,7 +115,7 @@ contract ZeroStateTest is ZeroState {
 abstract contract DivestedState is ZeroState {
     function setUp() public virtual override  {
         super.setUp();
-        uint256 initAmount = 1000000 * 10 ** baseToken.decimals();
+        uint256 initAmount = 1_000_000 * 10 ** baseToken.decimals();
         cash(baseToken, address(strategy), initAmount);
 
         vm.prank(alice);
@@ -156,8 +157,60 @@ contract DivestedStateTest is DivestedState {
 
         assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
     }
+
+    function testNoAuthInvest() public {
+        console2.log("strategy.invest()");
+
+        vm.expectRevert(bytes("Access denied"));
+        vm.prank(alice);
+        strategy.invest(seriesId, 0, type(uint256).max);
+    }
+
+    function testInvestDivested() public {
+        console2.log("strategy.invest()");
+
+        vm.prank(bob);
+        strategy.invest(seriesId, 0, type(uint256).max);
+
+        //TODO: check state changes
+    }
 }
 
+abstract contract InvestedState is DivestedState {
+    function setUp() public virtual override  {
+        super.setUp();
+        vm.prank(bob);
+        strategy.invest(seriesId, 0, type(uint256).max);
+    }
+}
+
+contract InvestedStateTest is InvestedState {
+    function testMintInvested() public {
+        console2.log("strategy.mint()");
+        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        cash(baseToken, address(strategy), mintAmount);
+        vm.prank(alice);
+        strategy.mint(bob, 0, type(uint256).max);
+
+        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
+    }
+
+    function testBurnInvested() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        assertGt(burnAmount, 0);
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        strategy.burn(alice, alice, 0);
+
+        assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
+    }
+}
+// }
 // Deployed
 //   mint(4) -> init -> Divested ✓
 //   init -> Divested
