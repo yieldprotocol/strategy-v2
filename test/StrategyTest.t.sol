@@ -3,7 +3,14 @@ pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import "../contracts/Strategy.sol";
+import { Strategy } from "../contracts/Strategy.sol";
+import { ICauldron } from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
+import { ILadle } from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import { IFYToken } from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import { IERC20Metadata } from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
 interface DonorStrategy {
     function seriesId() external view returns (bytes6);
@@ -33,6 +40,7 @@ abstract contract ZeroState is Test {
     address bob = address(bytes20(keccak256("bob")));
 
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
+    ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
     DonorStrategy donorStrategy = DonorStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
 
@@ -60,6 +68,14 @@ abstract contract ZeroState is Test {
 
     function assertTrackMinusEq(string memory id, uint256 minus, uint256 amount) public {
         assertEq(tracked[id] - minus, amount);
+    }
+
+    function assertTrackPlusApproxEqAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
+        assertApproxEqAbs(tracked[id] + plus, amount, delta);
+    }
+
+    function assertTrackMinusApproxEqAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
+        assertApproxEqAbs(tracked[id] - minus, amount, delta);
     }
 
     function setUp() public virtual {
@@ -181,10 +197,39 @@ contract DivestedStateTest is DivestedState {
     function testInvest() public {
         console2.log("strategy.invest()");
 
+        uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
+        track("poolBaseBalance", pool.getBaseBalance());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 poolTotalSupplyBefore = pool.totalSupply();
+        assertGt(strategyBaseFunds, 0);
+
         vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
 
-        //TODO: check state changes
+        // A vault for the series is built
+        bytes12 vaultId = strategy.vaultId();
+        assertFalse(vaultId == bytes12(0));
+        DataTypes.Vault memory vault = cauldron.vaults(vaultId);
+        assertEq(vault.seriesId, strategy.seriesId());
+        assertEq(vault.ilkId, strategy.baseId()); // The vaults that the strategy creates have the same asset for base and for ilk
+        assertEq(vault.owner, address(strategy));
+        
+        // The vault balances stay at zero
+        DataTypes.Balances memory balances = cauldron.balances(vaultId);
+        assertEq(balances.ink, 0);
+        assertEq(balances.art, 0);
+
+        // Base makes it to the pool
+        assertTrackPlusApproxEqAbs("poolBaseBalance", strategyBaseFunds, pool.getBaseBalance(), 100); // We allow some room because Euler conversions might not be perfect
+
+        // Strategy gets the pool increase in total supply
+        assertTrackPlusEq("strategyPoolBalance", pool.totalSupply() - poolTotalSupplyBefore, pool.balanceOf(address(strategy)));
+
+        // State variables are set
+        assertEq(strategy.seriesId(), seriesId);
+        assertEq(address(strategy.fyToken()), address(fyToken));
+        assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
+        assertEq(address(strategy.pool()), address(pool));
     }
 }
 
