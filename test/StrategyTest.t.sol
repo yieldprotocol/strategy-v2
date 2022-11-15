@@ -510,7 +510,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 // Divested
 //   mintDivested ✓
 //   burnDivested ✓
-//   invest -> Invested ✓  TODO: Tilted pool
+//   invest -> Invested ✓  TODO: Tilted pool - If the pool has fyToken, this reverts
 // Invested
 //   mint ✓
 //   burn ✓
@@ -525,11 +525,9 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 // DivestedAndEjected
 //   mintDivested  - ✓
 //   burnDivested  - TODO: Failing
-//   buyEjected - TODO: Code function
+//   buyEjected - TODO: Refactor redeemEjected
 //   invest -> Invested
 //   time passes -> DivestedAndEjectedAfterMaturity
-// DivestedAndEjectedAfterMaturity
-//   redeemEjected
 // InvestedAfterMaturity
 //   mint
 //   burn
