@@ -295,7 +295,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = debt < fyTokenReceived ? fyTokenReceived : debt;
+        uint256 toRepay = debt < fyTokenReceived ? debt : fyTokenReceived;
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
         ladle.pour(vaultId, address(this), -(toRepay).i128(), -(toRepay).i128());
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.

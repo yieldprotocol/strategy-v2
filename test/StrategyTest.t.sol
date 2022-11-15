@@ -398,7 +398,27 @@ contract InvestedStateTest is InvestedState {
         assertEq(bytes12(strategy.vaultId()), bytes12(0));
     }
 
-    function testEjectOnTiltedPool() public {}
+    function testEjectOnTiltedPool() public {
+        console2.log("strategy.divest()");
+
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        uint256 expectedFYToken = pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        vm.prank(alice);
+        strategy.eject(0, type(uint256).max);
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
+
+        (bytes6 ejectedSeriesId, uint256 ejectedCached) = strategy.ejected();
+        assertEq(ejectedSeriesId, seriesId);
+        assertApproxEqAbs(ejectedCached, expectedFYToken, 100);
+    }
 }
 
 abstract contract DivestedAndEjectedState is InvestedState {
