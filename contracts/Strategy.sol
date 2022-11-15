@@ -321,26 +321,25 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     // ----------------------- EJECTED FYTOKEN --------------------------- //
 
-    /// @dev Redeem ejected fyToken in the strategy for base
-    // TODO: Convert this a function for anyone to buy ejected fyToken from the strategy at face value, and reset ejected when all is sold.
-    function redeemEjected(uint256 redeemedFYToken)
+    /// @dev Buy ejected fyToken in the strategy at face value
+    // TODO: Refactor this function so that anyone can buy ejected fyToken from the strategy at face value, and reset ejected when all is sold.
+    function buyEjected(address to)
         external
         divested
+        returns (uint256 soldFYToken)
     {
         // Caching
         IFYToken fyToken_ = cauldron.series(ejected.seriesId).fyToken;
         require (address(fyToken_) != address(0), "Series not found");
 
-        // Redeem fyToken
-       uint256 receivedBase = fyToken_.redeem(address(this), redeemedFYToken);
+        // Find out how much base was in
 
-        // Update the base cache
-        cachedBase += receivedBase;
+        // Send same amount of ejecte fyToken out
 
         // Update ejected and reset if done
-        if ((ejected.cached -= redeemedFYToken.u128()) == 0) delete ejected;
+        if ((ejected.cached -= soldFYToken.u128()) == 0) delete ejected;
 
-        emit Redeemed(ejected.seriesId, redeemedFYToken, receivedBase);
+        emit SoldEjected(ejected.seriesId, soldFYToken);
     }
 
     // ----------------------- MINT & BURN --------------------------- //
