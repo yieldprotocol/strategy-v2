@@ -336,26 +336,7 @@ contract InvestedStateTest is InvestedState {
 
     function testBurnOnTiltedPool() public {}
 
-    function testDivest() public {
-        console2.log("strategy.divest()");
-        vm.warp(pool.maturity());
-
-        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-
-        strategy.divest();
-
-        assertEq(pool.balanceOf(address(strategy)), 0);
-        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
-
-        // State variables are reset
-        assertEq(strategy.seriesId(), bytes6(0));
-        assertEq(address(strategy.fyToken()), address(0));
-        assertEq(uint256(strategy.maturity()), 0);
-        assertEq(address(strategy.pool()), address(0));
-        assertEq(bytes12(strategy.vaultId()), bytes12(0));
-    }
-
+    // TODO: Move to its own state (InvestedTiltedMature)
     function testDivestOnTiltedPool() public {
         console2.log("strategy.divest()");
 
@@ -500,11 +481,24 @@ abstract contract InvestedAfterMaturity is InvestedState {
 }
 
 contract TestInvestedAfterMaturity is InvestedAfterMaturity {
-    function testDivestInvestedAfterMaturity() public {
+    function testDivest() public {
         console2.log("strategy.divest()");
-        vm.prank(bob);
+        vm.warp(pool.maturity());
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+
         strategy.divest();
-        //TODO: Checkl state changes
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
+
+        // State variables are reset
+        assertEq(strategy.seriesId(), bytes6(0));
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(uint256(strategy.maturity()), 0);
+        assertEq(address(strategy.pool()), address(0));
+        assertEq(bytes12(strategy.vaultId()), bytes12(0));
     }
 }
 
@@ -516,19 +510,25 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 // Divested
 //   mintDivested ✓
 //   burnDivested ✓
-//   invest -> Invested ✓  TODO: Check state changes
+//   invest -> Invested ✓  TODO: Tilted pool
 // Invested
-//   mint(3) - TODO: failing
+//   mint ✓
 //   burn ✓
-//   eject -> DivestedAndEjected ✓  TODO: Is it correct that this represents the state of DivestedAndEjected? - The contract will be divested and will have ejected fyToken -> DivestedAndEjected
-//   time passes -> InvestedAfterMaturity  TODO: Is there something to test here? - Just a state transition, no test
+//   eject -> DivestedAndEjected ✓
+//   time passes -> InvestedAfterMaturity
+// InvestedTilted
+//   mint ✓
+//   burn ✓
+//   eject -> DivestedAndEjected ✓
 // DivestedAndEjected
-//   mintDivested  - TODO: failing
-//   burnDivested  - TODO: failing
-//   invest -> Invested  - TODO: failing
+//   mintDivested  - ✓
+//   burnDivested  - TODO: Failing
+//   invest -> Invested
 //   time passes -> DivestedAndEjectedAfterMaturityOfEjected TODO: Is there something to test here? - Just a state transition, no test
 // InvestedAfterMaturity
-//   divest -> Divested ✓ TODO: Check state changes
+//   divest -> Divested ✓
+// InvestedTiltedAfterMaturity
+//   divest -> Divested ✓ TODO: Move test to state.
 
 // InvestedAndEjected
 //   same as Invested
