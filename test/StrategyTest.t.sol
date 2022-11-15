@@ -349,11 +349,20 @@ contract InvestedStateTest is InvestedState {
 
     function testDivestOnTiltedPool() public {}
 
+    function testEjectAuth() public {
+        console2.log("strategy.eject()");
+
+        vm.expectRevert(bytes("Access denied"));
+        vm.prank(bob);
+        strategy.eject(0, type(uint256).max);
+    }
+
     function testEject() public {
         console2.log("strategy.eject()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
 
+        vm.prank(alice);
         strategy.eject(0, type(uint256).max);
 
         assertEq(pool.balanceOf(address(strategy)), 0);

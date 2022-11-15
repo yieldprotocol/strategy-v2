@@ -314,6 +314,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Update state variables
         delete seriesId;
         delete fyToken;
+        delete maturity;
         delete pool;
         delete vaultId; // We either burned all the fyToken, or there is no debt left.
     }
