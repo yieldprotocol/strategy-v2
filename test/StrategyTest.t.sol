@@ -303,20 +303,26 @@ contract InvestedStateTest is InvestedState {
 
     function testBurnInvested() public {
         console2.log("strategy.burn()");
-        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
         assertGt(burnAmount, 0);
 
-        track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(bob, burnAmount);
 
-        console.log(strategy.balanceOf(bob));
+        track("cachedBase", strategy.cachedBase());
+        track("bobBaseTokens", baseToken.balanceOf(bob));
+        track("strategySupply", strategy.totalSupply());
+        uint256 baseExpected = (burnAmount * strategy.cachedBase()) / strategy.totalSupply();
 
         vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
-        strategy.burn(alice, alice, 0);
+        uint256 baseObtained = strategy.burn(bob, bob, 0);
 
-        assertTrackMinusEq("bobStrategyTokens", burnAmount, strategy.balanceOf(bob));
-        assertTrackPlusEq("aliceBaseTokens", 500050153532937642368309, baseToken.balanceOf(alice));
+        assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
+        assertApproxEqAbs(baseExpected, baseObtained, 100);
+        assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
+        assertTrackMinusApproxEqAbs("cachedBase", baseExpected, strategy.totalSupply(), 100);
     }
 
     function testBurnOnTiltedPool() public {}

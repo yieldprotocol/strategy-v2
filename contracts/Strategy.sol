@@ -424,24 +424,19 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function _burnInvested(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
         internal
         invested
-        returns (uint256 withdrawal)
+        returns (uint256 baseObtained)
     {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
         uint256 cached_ = cachedBase;
 
-        // strategy * burnt/supply = withdrawal
-
         // Burn strategy tokens
         uint256 burnt = _balanceOf[address(this)];
-        withdrawal = cached_ * burnt / _totalSupply;
         _burn(address(this), burnt);
 
-        // Update cached base
-        cachedBase = cached_ - withdrawal;
-
         // Burn lpTokens
+        uint256 withdrawal = pool.balanceOf(address(this)) * burnt / _totalSupply;
         IERC20(address(pool_)).safeTransfer(address(pool_), withdrawal);
         (, uint256 baseFromBurn, uint256 fyTokenReceived) = pool_.burn(baseTo, address(this), 0, type(uint256).max);
 
@@ -459,8 +454,14 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
             baseFromSale = pool_.sellFYToken(address(this), 0);
         }
 
+        // Update cached base
+        cachedBase = cached_ - baseFromBurn - fyTokenReceived; // Internally, we always value fyToken at 1:1
+
+        // Function return
+        baseObtained = baseFromBurn + toRepay + baseFromSale;
+
         // Slippage
-        require (baseFromBurn + baseFromSale >= minBaseReceived, "Not enough base obtained");
+        require (baseObtained >= minBaseReceived, "Not enough base obtained");
 
         // If we have ejected fyToken, we give them out in the same proportion
         if (ejected.seriesId != bytes6(0)) _transferEjected(ejectedFYTokenTo, ejected.cached * burnt / _totalSupply);
