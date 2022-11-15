@@ -74,12 +74,10 @@ abstract contract ZeroState is Test {
         // Strategy V2
         strategy = new Strategy("StrategyTest.t.sol", "test", baseToken.decimals(), ladle, fyToken);
 
-        // Alice has init role
+        // Alice has privileged roles
         strategy.grantRole(Strategy.init.selector, alice);
-
-        // Bob has invest and eject role
-        strategy.grantRole(Strategy.invest.selector, bob);
-        strategy.grantRole(Strategy.eject.selector, bob);
+        strategy.grantRole(Strategy.invest.selector, alice);
+        strategy.grantRole(Strategy.eject.selector, alice);
 
         vm.label(deployer, "deployer");
         vm.label(alice, "alice");
@@ -168,14 +166,14 @@ contract DivestedStateTest is DivestedState {
         console2.log("strategy.invest()");
 
         vm.expectRevert(bytes("Access denied"));
-        vm.prank(alice);
+        vm.prank(bob);
         strategy.invest(seriesId, 0, type(uint256).max);
     }
 
-    function testInvestDivested() public {
+    function testInvest() public {
         console2.log("strategy.invest()");
 
-        vm.prank(bob);
+        vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
 
         //TODO: check state changes
@@ -185,7 +183,7 @@ contract DivestedStateTest is DivestedState {
 abstract contract InvestedState is DivestedState {
     function setUp() public virtual override {
         super.setUp();
-        vm.prank(bob);
+        vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
     }
 }
@@ -233,7 +231,7 @@ contract InvestedStateTest is InvestedState {
 
         assertGt(pool.balanceOf(address(strategy)), 0);
 
-        vm.prank(bob);
+        vm.prank(alice);
         strategy.eject(0, type(uint256).max);
 
         assertEq(pool.balanceOf(address(strategy)), 0);
@@ -249,7 +247,7 @@ abstract contract DivestedAndEjectedState is InvestedState {
 
     function setUp() public virtual override {
         super.setUp();
-        vm.prank(bob);
+        vm.prank(alice);
         strategy.eject(0, type(uint256).max);
     }
 }
@@ -284,7 +282,7 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
     function testInvestDivestedAndEjected() public {
         // TODO: Failing
         console2.log("strategy.invest()");
-        vm.prank(bob);
+        vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
     }
 }
