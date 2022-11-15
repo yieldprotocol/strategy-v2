@@ -165,14 +165,14 @@ contract DivestedStateTest is DivestedState {
 
     function testMintDivested() public {
         console2.log("strategy.mint()");
-        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+        uint256 baseIn = 1000 * 10 ** baseToken.decimals();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        cash(baseToken, address(strategy), mintAmount);
+        cash(baseToken, address(strategy), baseIn);
         vm.prank(alice);
         strategy.mint(bob, 0, type(uint256).max);
 
-        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
+        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
     }
 
     function testBurnDivested() public {
@@ -284,22 +284,22 @@ abstract contract InvestedState is DivestedState {
 contract InvestedStateTest is InvestedState {
     function testMintInvested() public {
         console2.log("strategy.mint()");
-        uint256 mintAmount = pool.getBaseBalance() / 1000;
+        uint256 baseIn = pool.getBaseBalance() / 1000;
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
         track("cachedBase", strategy.cachedBase());
         track("poolBaseBalance", pool.getBaseBalance());
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-        uint256 poolMinted = (mintAmount * pool.totalSupply()) / pool.getBaseBalance();
+        uint256 poolMinted = (baseIn * pool.totalSupply()) / pool.getBaseBalance();
 
-        cash(baseToken, address(strategy), mintAmount);
+        cash(baseToken, address(strategy), baseIn);
         vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
-        assertEq(minted, mintAmount);
-        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
-        assertTrackPlusEq("cachedBase", mintAmount, strategy.cachedBase());
-        assertTrackPlusApproxEqAbs("poolBaseBalance", mintAmount, pool.getBaseBalance(), 100);
+        assertEq(minted, baseIn);
+        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
+        assertTrackPlusEq("cachedBase", baseIn, strategy.cachedBase());
+        assertTrackPlusApproxEqAbs("poolBaseBalance", baseIn, pool.getBaseBalance(), 100);
         assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
     }
 
@@ -418,16 +418,18 @@ contract InvestedStateTest is InvestedState {
         (bytes6 ejectedSeriesId, uint256 ejectedCached) = strategy.ejected();
         assertEq(ejectedSeriesId, seriesId);
         assertApproxEqAbs(ejectedCached, expectedFYToken, 100);
+        assertGt(ejectedCached, 0);
     }
 }
 
 abstract contract DivestedAndEjectedState is InvestedState {
-    // not sure if this is correct, the state chart says:
-    // Invested
-    //   eject -> DivestedAndEjected
-
     function setUp() public virtual override {
         super.setUp();
+
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+
         vm.prank(alice);
         strategy.eject(0, type(uint256).max);
     }
@@ -436,16 +438,20 @@ abstract contract DivestedAndEjectedState is InvestedState {
 contract TestDivestedAndEjected is DivestedAndEjectedState {
     function testMintDivestedAndEjected() public {
         console2.log("strategy.mint()");
-        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+        uint256 baseIn = strategy.cachedBase() / 1000;
+        (, uint256 ejectedCached) = strategy.ejected();
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / (strategy.cachedBase() + ejectedCached);
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        cash(baseToken, address(strategy), mintAmount);
+        track("cachedBase", strategy.cachedBase());
+
+        cash(baseToken, address(strategy), baseIn);
         vm.prank(alice);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
-        // TODO: This fails because at this point the cached balance is higher than the actual balance
-        strategy.mint(bob, 0, type(uint256).max);
-
-        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
+        assertApproxEqAbs(minted, expectedMinted, 100);
+        assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
+        assertTrackPlusEq("cachedBase", baseIn, strategy.cachedBase());
     }
 
     function testBurnDivestedAndEjected() public {

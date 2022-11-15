@@ -483,11 +483,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
-        uint256 cached_ = cachedBase + ejected.cached; // We value ejected fyToken at 1:1
+        uint256 cached_ = cachedBase;
         uint256 deposit = base.balanceOf(address(this)) - cached_;
         cachedBase = cached_ + deposit;
 
-        minted = _totalSupply * deposit / cached_;
+        minted = _totalSupply * deposit / (cached_ + ejected.cached); // We value ejected fyToken at 1:1
         
         _mint(to, minted);
     }
@@ -503,6 +503,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // strategy * burnt/supply = withdrawal
         uint256 burnt = _balanceOf[address(this)];
         withdrawal = base.balanceOf(address(this)) * burnt / _totalSupply;
+        cachedBase -= withdrawal;
 
         _burn(address(this), burnt);
         base.safeTransfer(baseTo, withdrawal);
