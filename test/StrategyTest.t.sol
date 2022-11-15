@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
+
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "../contracts/Strategy.sol";
 
 interface DonorStrategy {
-        function seriesId() external view returns(bytes6);
-        function pool() external view returns(IPool);
+    function seriesId() external view returns (bytes6);
+    function pool() external view returns (IPool);
 }
 
 abstract contract ZeroState is Test {
@@ -42,7 +43,7 @@ abstract contract ZeroState is Test {
     IERC20Metadata sharesToken;
     Strategy strategy;
 
-    mapping (string => uint256) tracked;
+    mapping(string => uint256) tracked;
 
     function cash(IERC20 token, address user, uint256 amount) public {
         uint256 start = token.balanceOf(user);
@@ -57,8 +58,12 @@ abstract contract ZeroState is Test {
         assertEq(tracked[id] + plus, amount);
     }
 
+    function assertTrackMinusEq(string memory id, uint256 minus, uint256 amount) public {
+        assertEq(tracked[id] - minus, amount);
+    }
+
     function setUp() public virtual {
-        vm.createSelectFork('mainnet', 15741300);
+        vm.createSelectFork("mainnet", 15741300);
 
         seriesId = donorStrategy.seriesId();
         pool = donorStrategy.pool();
@@ -72,8 +77,9 @@ abstract contract ZeroState is Test {
         // Alice has init role
         strategy.grantRole(Strategy.init.selector, alice);
 
-        // Bob has invest role
+        // Bob has invest and eject role
         strategy.grantRole(Strategy.invest.selector, bob);
+        strategy.grantRole(Strategy.eject.selector, bob);
 
         vm.label(deployer, "deployer");
         vm.label(alice, "alice");
@@ -113,7 +119,7 @@ contract ZeroStateTest is ZeroState {
 }
 
 abstract contract DivestedState is ZeroState {
-    function setUp() public virtual override  {
+    function setUp() public virtual override {
         super.setUp();
         uint256 initAmount = 1_000_000 * 10 ** baseToken.decimals();
         cash(baseToken, address(strategy), initAmount);
@@ -177,7 +183,7 @@ contract DivestedStateTest is DivestedState {
 }
 
 abstract contract InvestedState is DivestedState {
-    function setUp() public virtual override  {
+    function setUp() public virtual override {
         super.setUp();
         vm.prank(bob);
         strategy.invest(seriesId, 0, type(uint256).max);
@@ -192,9 +198,14 @@ contract InvestedStateTest is InvestedState {
         track("bobStrategyTokens", strategy.balanceOf(bob));
         cash(baseToken, address(strategy), mintAmount);
         vm.prank(alice);
+        // TODO: This fails because at this point the cached balance is higher than the actual balance
         strategy.mint(bob, 0, type(uint256).max);
 
         assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
+        console.log(
+            "+ + file: StrategyTest.t.sol + line 198 + testMintInvested + strategy.balanceOf(bob)",
+            strategy.balanceOf(bob)
+        );
     }
 
     function testBurnInvested() public {
@@ -202,33 +213,120 @@ contract InvestedStateTest is InvestedState {
         uint256 burnAmount = strategy.balanceOf(bob) / 2;
         assertGt(burnAmount, 0);
 
+        track("bobStrategyTokens", strategy.balanceOf(bob));
         track("aliceBaseTokens", baseToken.balanceOf(alice));
+
+        console.log(strategy.balanceOf(bob));
+
         vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
         strategy.burn(alice, alice, 0);
 
-        assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
+        assertTrackMinusEq("bobStrategyTokens", burnAmount, strategy.balanceOf(bob));
+        assertTrackPlusEq("aliceBaseTokens", 500050153532937642368309, baseToken.balanceOf(alice));
+    }
+
+    function testEjectInvested() public {
+        console2.log("strategy.eject()");
+        uint256 ejectAmount = strategy.balanceOf(bob) / 2;
+        assertGt(ejectAmount, 0);
+
+        assertGt(pool.balanceOf(address(strategy)), 0);
+
+        vm.prank(bob);
+        strategy.eject(0, type(uint256).max);
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+
+        //TODO: check other state changes
     }
 }
+
+abstract contract DivestedAndEjectedState is InvestedState {
+    // not sure if this is correct, the state chart says:
+    // Invested
+    //   eject -> DivestedAndEjected
+
+    function setUp() public virtual override {
+        super.setUp();
+        vm.prank(bob);
+        strategy.eject(0, type(uint256).max);
+    }
+}
+
+contract TestDivestedAndEjected is DivestedAndEjectedState {
+    function testMintDivestedAndEjected() public {
+        console2.log("strategy.mint()");
+        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        cash(baseToken, address(strategy), mintAmount);
+        vm.prank(alice);
+
+        // TODO: This fails because at this point the cached balance is higher than the actual balance
+        strategy.mint(bob, 0, type(uint256).max);
+
+        assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
+    }
+
+    function testBurnDivestedAndEjected() public {
+        // TODO: Failing
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        assertGt(burnAmount, 0);
+
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        strategy.burn(alice, alice, 0);
+
+    }
+
+    function testInvestDivestedAndEjected() public {
+        // TODO: Failing
+        console2.log("strategy.invest()");
+        vm.prank(bob);
+        strategy.invest(seriesId, 0, type(uint256).max);
+    }
+}
+
+abstract contract InvestedAfterMaturity is InvestedState {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.warp(pool.maturity());
+    }
+}
+
+contract TestInvestedAfterMaturity is InvestedAfterMaturity {
+    function testDivestInvestedAfterMaturity() public {
+        console2.log("strategy.divest()");
+        vm.prank(bob);
+        strategy.divest();
+        //TODO: Checkl state changes
+    }
+}
+
+
 // }
 // Deployed
 //   mint(4) -> init -> Divested ✓
-//   init -> Divested
+//   init -> Divested ???
 // Divested
-//   mintDivested
-//   burnDivested
-//   invest -> Invested
+//   mintDivested ✓
+//   burnDivested ✓
+//   invest -> Invested ✓  TODO: Check state changes
 // Invested
-//   mint(3)
-//   burn
-//   eject -> DivestedAndEjected
-//   time passes -> InvestedAfterMaturity
-// InvestedAfterMaturity
-//   divest -> Divested
-
+//   mint(3) - TODO: failing
+//   burn ✓
+//   eject -> DivestedAndEjected ✓  TODO: Is it correct that this represents the state of DivestedAndEjected?  SHouldnt it be InvestedAndEjected?
+//   time passes -> InvestedAfterMaturity  TODO: Is there something to test here?
 // DivestedAndEjected
-//   same as Divested
-//   time passes -> DivestedAndEjectedAfterMaturityOfEjected
+//   mintDivested  - TODO: failing
+//   burnDivested  - TODO: failing
+//   invest -> Invested  - TODO: failing
+//   time passes -> DivestedAndEjectedAfterMaturityOfEjected TODO: Is there something to test here?
+// InvestedAfterMaturity
+//   divest -> Divested ✓ TODO: Check state changes
+
 // InvestedAndEjected
 //   same as Invested
 //   time passes -> InvestedAfterMaturityAndEjected
