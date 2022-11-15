@@ -237,14 +237,18 @@ contract DivestedStateTest is DivestedState {
     function testInvestOnTiltedPool() public {
         console2.log("strategy.invest()");
 
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+
         uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
+        assertGt(strategyBaseFunds, 0);
+        
         track("poolBaseBalance", pool.getBaseBalance());
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
         uint256 poolTotalSupplyBefore = pool.totalSupply();
         uint256 poolFYTokenBalanceBefore = pool.getFYTokenBalance() - poolTotalSupplyBefore;
-        assertGt(strategyBaseFunds, 0);
-        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
-        pool.sellFYToken(bob, 0);
+
 
         vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
@@ -347,7 +351,24 @@ contract InvestedStateTest is InvestedState {
         assertEq(bytes12(strategy.vaultId()), bytes12(0));
     }
 
-    function testDivestOnTiltedPool() public {}
+    function testDivestOnTiltedPool() public {
+        console2.log("strategy.divest()");
+
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+
+        vm.warp(pool.maturity());
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        uint256 expectedFYToken = pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        strategy.divest();
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
+    }
 
     function testEjectAuth() public {
         console2.log("strategy.eject()");
