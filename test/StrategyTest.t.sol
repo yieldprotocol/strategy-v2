@@ -114,6 +114,14 @@ contract ZeroStateTest is ZeroState {
         vm.prank(alice);
         strategy.init(bob);
     }
+
+    function testNoEmptyInvest() public {
+        console2.log("strategy.invest()");
+
+        vm.expectRevert(bytes("Init Strategy first"));
+        vm.prank(alice);
+        strategy.invest(seriesId, 0, type(uint256).max);
+    }
 }
 
 abstract contract DivestedState is ZeroState {
@@ -315,13 +323,13 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 // Invested
 //   mint(3) - TODO: failing
 //   burn ✓
-//   eject -> DivestedAndEjected ✓  TODO: Is it correct that this represents the state of DivestedAndEjected?  SHouldnt it be InvestedAndEjected?
-//   time passes -> InvestedAfterMaturity  TODO: Is there something to test here?
+//   eject -> DivestedAndEjected ✓  TODO: Is it correct that this represents the state of DivestedAndEjected? - The contract will be divested and will have ejected fyToken -> DivestedAndEjected
+//   time passes -> InvestedAfterMaturity  TODO: Is there something to test here? - Just a state transition, no test
 // DivestedAndEjected
 //   mintDivested  - TODO: failing
 //   burnDivested  - TODO: failing
 //   invest -> Invested  - TODO: failing
-//   time passes -> DivestedAndEjectedAfterMaturityOfEjected TODO: Is there something to test here?
+//   time passes -> DivestedAndEjectedAfterMaturityOfEjected TODO: Is there something to test here? - Just a state transition, no test
 // InvestedAfterMaturity
 //   divest -> Divested ✓ TODO: Check state changes
 
