@@ -501,9 +501,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 withdrawal)
     {
         // strategy * burnt/supply = withdrawal
+        uint256 cached_ = cachedBase;
         uint256 burnt = _balanceOf[address(this)];
-        withdrawal = base.balanceOf(address(this)) * burnt / _totalSupply;
-        cachedBase -= withdrawal;
+        withdrawal = cached_ * burnt / _totalSupply;
+        cachedBase -= withdrawal; // TODO: What if there isn't enough base for the transfer?
 
         _burn(address(this), burnt);
         base.safeTransfer(baseTo, withdrawal);

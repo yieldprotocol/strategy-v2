@@ -165,14 +165,19 @@ contract DivestedStateTest is DivestedState {
 
     function testMintDivested() public {
         console2.log("strategy.mint()");
-        uint256 baseIn = 1000 * 10 ** baseToken.decimals();
+        uint256 baseIn = strategy.cachedBase() / 1000;
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cachedBase();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
+        track("cachedBase", strategy.cachedBase());
+
         cash(baseToken, address(strategy), baseIn);
         vm.prank(alice);
-        strategy.mint(bob, 0, type(uint256).max);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
-        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
+        assertEq(minted, expectedMinted);
+        assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
+        assertTrackPlusEq("cachedBase", baseIn, strategy.cachedBase());
     }
 
     function testBurnDivested() public {
@@ -449,21 +454,34 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
-        assertApproxEqAbs(minted, expectedMinted, 100);
+        assertEq(minted, expectedMinted);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
         assertTrackPlusEq("cachedBase", baseIn, strategy.cachedBase());
     }
 
     function testBurnDivestedAndEjected() public {
-        // TODO: Failing
         console2.log("strategy.burn()");
-        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
         assertGt(burnAmount, 0);
 
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(bob, burnAmount);
+
+        (, uint256 ejectedCached) = strategy.ejected();
+
+        uint256 expectedBaseObtained = (burnAmount * strategy.totalSupply()) / strategy.cachedBase();
+        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejectedCached;
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        track("bobFYTokens", fyToken.balanceOf(bob));
         vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
-        strategy.burn(alice, alice, 0);
+        uint256 baseObtained = strategy.burn(alice, bob, 0);
 
+//        assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
+//        assertTrackPlusEq("bobFYTokens", expectedFYTokenObtained, fyToken.balanceOf(bob));
+        assertTrackMinusEq("cachedBase", baseObtained, strategy.cachedBase());
     }
 
     function testInvestDivestedAndEjected() public {
