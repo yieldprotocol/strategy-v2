@@ -201,7 +201,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
-        // TODO: If there are ejected fyToken, consider restricting investing only to series of the same fyToken. Ask Allan.
+        // TODO: Don't allow investing with ejected fyToken
         // There are some risks of getting stuck until maturity, but also simplifies the state machine
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
@@ -341,6 +341,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         emit Redeemed(ejected.seriesId, redeemedFYToken, receivedBase);
     }
+
+    // TODO: Add a function for anyone to buy ejected fyToken from the strategy at face value, and reset ejected when all is sold.
 
     // ----------------------- MINT & BURN --------------------------- //
 
