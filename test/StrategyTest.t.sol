@@ -38,6 +38,7 @@ abstract contract ZeroState is Test {
     address deployer = address(bytes20(keccak256("deployer")));
     address alice = address(bytes20(keccak256("alice")));
     address bob = address(bytes20(keccak256("bob")));
+    address hole = address(bytes20(keccak256("hole")));
 
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
@@ -98,6 +99,7 @@ abstract contract ZeroState is Test {
         vm.label(deployer, "deployer");
         vm.label(alice, "alice");
         vm.label(bob, "bob");
+        vm.label(hole, "hole");
         vm.label(address(strategy), "strategy");
         vm.label(address(pool), "pool");
         vm.label(address(sharesToken), "sharesToken");
@@ -107,7 +109,7 @@ abstract contract ZeroState is Test {
 }
 
 contract ZeroStateTest is ZeroState {
-    function testInitStrat() public {
+    function testInit() public {
         console2.log("strategy.init()");
         uint256 initAmount = 10 ** baseToken.decimals();
 
@@ -128,7 +130,7 @@ contract ZeroStateTest is ZeroState {
 
         vm.expectRevert(bytes("Not enough base in"));
         vm.prank(alice);
-        strategy.init(bob);
+        strategy.init(hole);
     }
 
     function testNoEmptyInvest() public {
@@ -143,11 +145,11 @@ contract ZeroStateTest is ZeroState {
 abstract contract DivestedState is ZeroState {
     function setUp() public virtual override {
         super.setUp();
-        uint256 initAmount = 1_000_000 * 10 ** baseToken.decimals();
+        uint256 initAmount = 100 * 10 ** baseToken.decimals();
         cash(baseToken, address(strategy), initAmount);
 
         vm.prank(alice);
-        strategy.init(bob);
+        strategy.init(hole);
     }
 }
 
@@ -158,7 +160,7 @@ contract DivestedStateTest is DivestedState {
 
         vm.expectRevert(bytes("Already initialized"));
         vm.prank(alice);
-        strategy.init(bob);
+        strategy.init(hole);
     }
 
     function testMintDivested() public {
@@ -278,20 +280,26 @@ abstract contract InvestedState is DivestedState {
 contract InvestedStateTest is InvestedState {
     function testMintInvested() public {
         console2.log("strategy.mint()");
-        uint256 mintAmount = 1000 * 10 ** baseToken.decimals();
+        uint256 mintAmount = pool.getBaseBalance() / 1000;
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
+        track("cachedBase", strategy.cachedBase());
+        track("poolBaseBalance", pool.getBaseBalance());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 poolMinted = (mintAmount * pool.totalSupply()) / pool.getBaseBalance();
+
         cash(baseToken, address(strategy), mintAmount);
         vm.prank(alice);
-        // TODO: This fails because at this point the cached balance is higher than the actual balance
-        strategy.mint(bob, 0, type(uint256).max);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
+        assertEq(minted, mintAmount);
         assertTrackPlusEq("bobStrategyTokens", mintAmount, strategy.balanceOf(bob));
-        console.log(
-            "+ + file: StrategyTest.t.sol + line 198 + testMintInvested + strategy.balanceOf(bob)",
-            strategy.balanceOf(bob)
-        );
+        assertTrackPlusEq("cachedBase", mintAmount, strategy.cachedBase());
+        assertTrackPlusApproxEqAbs("poolBaseBalance", mintAmount, pool.getBaseBalance(), 100);
+        assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
     }
+
+    function testMintOnTiltedPool() public {}
 
     function testBurnInvested() public {
         console2.log("strategy.burn()");
@@ -311,6 +319,25 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("aliceBaseTokens", 500050153532937642368309, baseToken.balanceOf(alice));
     }
 
+    function testBurnOnTiltedPool() public {}
+
+    function testDivest() public {
+        console2.log("strategy.eject()");
+        uint256 ejectAmount = strategy.balanceOf(bob) / 2;
+        assertGt(ejectAmount, 0);
+
+        assertGt(pool.balanceOf(address(strategy)), 0);
+
+        vm.prank(alice);
+        strategy.eject(0, type(uint256).max);
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+
+        //TODO: check other state changes
+    }
+
+    function testDivestOnTiltedPool() public {}
+
     function testEjectInvested() public {
         console2.log("strategy.eject()");
         uint256 ejectAmount = strategy.balanceOf(bob) / 2;
@@ -325,6 +352,8 @@ contract InvestedStateTest is InvestedState {
 
         //TODO: check other state changes
     }
+
+    function testEjectOnTiltedPool() public {}
 }
 
 abstract contract DivestedAndEjectedState is InvestedState {

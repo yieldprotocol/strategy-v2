@@ -65,7 +65,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     bytes6 public seriesId;                      // Identifier for the current seriesId
     // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
     IPool public pool;                           // Current pool that this strategy invests in
-    uint256 public cachedBase;                   // Base tokens owned by the strategy after the last operation
+    uint256 public cachedBase;                   // While divested, base tokens owned by the strategy. While invested, value of the strategy holdings in base terms.
 
     EjectedSeries public ejected;                // In emergencies, the strategy can keep fyToken of one series
 
@@ -392,26 +392,22 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // minted = supply * value(deposit) / value(strategy)
 
-        // Find how much was deposited
-        uint256 deposit = base.balanceOf(address(this)) - cached_;
+        // Find how much was deposited, knowing that the strategy doesn't hold any base while invested
+        uint256 deposit = base.balanceOf(address(this));
 
         // Update the base cache
-        cached_ += deposit;
         cachedBase = cached_ + deposit;
 
-        // Add any ejected fyToken into the strategy value, at 1:1
-        cached_ += ejected.cached;
-
         // Mint strategy tokens
-        minted = _totalSupply * deposit / cached_;
+        minted = _totalSupply * deposit / (cached_ + ejected.cached); // Add any ejected fyToken into the strategy value, at 1:1
         _mint(to, minted);
 
         // Now, put the funds into the Pool
         uint256 baseInPool = pool_.getBaseBalance();
         uint256 fyTokenInPool = pool_.getFYTokenBalance() - pool_.totalSupply();
 
-        uint256 baseToPool = (cachedBase * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
-        uint256 fyTokenToPool = cachedBase - baseToPool;        // fyTokenToPool is rounded down
+        uint256 baseToPool = (deposit * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
+        uint256 fyTokenToPool = deposit - baseToPool;        // fyTokenToPool is rounded down
 
         // Borrow fyToken with underlying as collateral
         base.safeTransfer(baseJoin, fyTokenToPool);
