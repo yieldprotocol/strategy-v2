@@ -505,8 +505,8 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 
 // }
 // Deployed
-//   mint(4) -> init -> Divested ✓
-//   init -> Divested ???
+//   mint(4) -> init -> Divested ✓ (Tested on StrategyMigrator.t.sol)
+//   init -> Divested ✓
 // Divested
 //   mintDivested ✓
 //   burnDivested ✓
@@ -516,37 +516,26 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 //   burn ✓
 //   eject -> DivestedAndEjected ✓
 //   time passes -> InvestedAfterMaturity
+//   sell fyToken into pool -> InvestedTilted
 // InvestedTilted
 //   mint ✓
 //   burn ✓
 //   eject -> DivestedAndEjected ✓
+//   time passes -> InvestedTiltedAfterMaturity
 // DivestedAndEjected
 //   mintDivested  - ✓
 //   burnDivested  - TODO: Failing
+//   buyEjected - TODO: Code function
 //   invest -> Invested
-//   time passes -> DivestedAndEjectedAfterMaturityOfEjected TODO: Is there something to test here? - Just a state transition, no test
+//   time passes -> DivestedAndEjectedAfterMaturity
+// DivestedAndEjectedAfterMaturity
+//   redeemEjected
 // InvestedAfterMaturity
+//   mint
+//   burn
 //   divest -> Divested ✓
 // InvestedTiltedAfterMaturity
 //   divest -> Divested ✓ TODO: Move test to state.
+//   mint
+//   burn
 
-// InvestedAndEjected
-//   same as Invested
-//   time passes -> InvestedAfterMaturityAndEjected
-//   time passes -> InvestedAndAfterMaturityOfEjected
-//   time passes -> InvestedAfterMaturityAndAfterMaturityOfEjected
-// InvestedAfterMaturityAndEjected
-//   divest -> DivestedAndEjected
-//   time passes -> InvestedAfterMaturityAndAfterMaturityOfEjected
-
-// DivestedAndEjectedAfterMaturityOfEjected
-//   same as DivestedAndEjected
-//   redeemEjected -> Divested
-// InvestedAfterMaturityAndEjected
-//   same as InvestedAfterMaturity
-// InvestedAndAfterMaturityOfEjected
-//   same as Invested
-//   redeemEjected -> Invested
-// InvestedAfterMaturityAndAfterMaturityOfEjected
-//   same as InvestedAfterMaturity
-//   redeemEjected -> InvestedAfterMaturity
