@@ -231,6 +231,40 @@ contract DivestedStateTest is DivestedState {
         assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
         assertEq(address(strategy.pool()), address(pool));
     }
+
+    function testInvestOnTiltedPool() public {
+        console2.log("strategy.invest()");
+
+        uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
+        track("poolBaseBalance", pool.getBaseBalance());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 poolTotalSupplyBefore = pool.totalSupply();
+        uint256 poolFYTokenBalanceBefore = pool.getFYTokenBalance() - poolTotalSupplyBefore;
+        assertGt(strategyBaseFunds, 0);
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(bob, 0);
+
+        vm.prank(alice);
+        strategy.invest(seriesId, 0, type(uint256).max);
+        // Reverts on `pool_.mint` -> `_mint` -> `_unwrapPreview` -> `IEToken(address(sharesToken)).convertBalanceToUnderlying(sharesInBaseDecimals * scaleFactor)`
+        // https://github.com/yieldprotocol/yieldspace-tv/blob/fc7d8a387761f3f432a569bd56712cc3f91d73cd/src/Pool/Modules/PoolEuler.sol#L122
+   
+//        // Base makes it to the pool
+//        assertTrackPlusApproxEqAbs("poolBaseBalance", strategyBaseFunds, pool.getBaseBalance(), 100); // We allow some room because Euler conversions might not be perfect
+//
+//        // FYToken makes it to the pool
+//        uint256 poolFYTokenBalanceAfter = pool.getFYTokenBalance() - pool.totalSupply();
+//        uint256 fyTokenToPool = poolFYTokenBalanceAfter - poolFYTokenBalanceBefore;
+//        assertGt(fyTokenToPool, 0);
+//
+//        // The vault balances equal the fyToken added to the pool
+//        DataTypes.Balances memory balances = cauldron.balances(vaultId);
+//        assertEq(balances.ink, fyTokenToPool);
+//        assertEq(balances.art, fyTokenToPool);
+//
+//        // Strategy gets the pool increase in total supply
+//        assertTrackPlusEq("strategyPoolBalance", pool.totalSupply() - poolTotalSupplyBefore, pool.balanceOf(address(strategy)));
+    }
 }
 
 abstract contract InvestedState is DivestedState {
