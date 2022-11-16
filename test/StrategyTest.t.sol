@@ -187,7 +187,6 @@ contract DivestedStateTest is DivestedState {
         track("baseValue", strategy.baseValue());
 
         cash(baseToken, address(strategy), baseIn);
-        vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
         assertEq(minted, expectedMinted);
@@ -323,7 +322,6 @@ contract InvestedStateTest is InvestedState {
         uint256 poolMinted = (baseIn * pool.totalSupply()) / pool.getBaseBalance();
 
         cash(baseToken, address(strategy), baseIn);
-        vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
         assertEq(minted, baseIn);
@@ -340,15 +338,13 @@ contract InvestedStateTest is InvestedState {
 
         // Let's dig some tokens out of the hole
         vm.prank(hole);
-        strategy.transfer(bob, burnAmount);
+        strategy.transfer(address(strategy), burnAmount);
 
         track("baseValue", strategy.baseValue());
         track("bobBaseTokens", baseToken.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
         uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
 
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
         uint256 baseObtained = strategy.burn(bob, bob, 0);
 
         assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
@@ -414,7 +410,6 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         assertGt(fyTokenToPool, 0);
 
         cash(baseToken, address(strategy), baseIn);
-        vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
         assertEq(minted, baseIn);
@@ -432,15 +427,13 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
 
         // Let's dig some tokens out of the hole
         vm.prank(hole);
-        strategy.transfer(bob, burnAmount);
+        strategy.transfer(address(strategy), burnAmount);
 
         track("baseValue", strategy.baseValue());
         track("bobBaseTokens", baseToken.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
         uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
 
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
         uint256 baseObtained = strategy.burn(bob, bob, 0);
 
         assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
@@ -490,7 +483,6 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         track("baseValue", strategy.baseValue());
 
         cash(baseToken, address(strategy), baseIn);
-        vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
         assertEq(minted, expectedMinted);
@@ -534,7 +526,6 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         // initial buy - half of ejected fyToken balance
         uint initialBuy = fyTokenAvailable / 2;
         cash(baseToken, address(strategy), initialBuy);
-        vm.prank(bob);
         (uint256 bought,) = strategy.buyEjected(alice, bob);
 
         assertEq(bought, initialBuy);
@@ -549,7 +540,6 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         uint secondBuy = remainingFYToken * 2;
         uint returned;
         cash(baseToken, address(strategy), secondBuy);
-        vm.prank(bob);
         (bought, returned) = strategy.buyEjected(alice, bob);
 
         assertEq(bought, remainingFYToken);
@@ -592,7 +582,6 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
 
-        vm.prank(alice);
         uint256 minted = strategy.mint(bob, 0, type(uint256).max);
 
         // We should have divested
@@ -613,14 +602,13 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 
         // Let's dig some tokens out of the hole
         vm.prank(hole);
-        strategy.transfer(bob, burnAmount);
+        strategy.transfer(address(strategy), burnAmount);
 
         uint256 expectedBaseObtained = (burnAmount * strategy.baseValue() / strategy.totalSupply());
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
         track("baseValue", strategy.baseValue());
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
+
         uint256 baseObtained = strategy.burn(alice, alice, 0);
 
         // We should have divested
@@ -664,9 +652,55 @@ abstract contract InvestedTiltedAfterMaturity is InvestedTiltedState {
 }
 
 contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
-    function testMintOnTiltedPool() public {}
+    function testMintOnTiltedPool() public {
+        console2.log("strategy.mint()");
+        uint256 baseIn = pool.getBaseBalance() / 1000;
 
-    function testBurnOnTiltedPool() public {}
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        track("baseValue", strategy.baseValue());
+
+        cash(baseToken, address(strategy), baseIn);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
+
+        // We should have divested
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(address(strategy.pool()), address(0));
+
+        // Alice's new strategy tokens should be the right proportion of the strategy base value
+        uint256 expectedStrategyTokens = (baseIn * strategy.totalSupply()) / strategy.baseValue();
+        assertTrackPlusEq("bobStrategyTokens", expectedStrategyTokens, strategy.balanceOf(bob));
+        assertEq(expectedStrategyTokens, minted);
+        // assertTrackPlusEq("baseValue", baseIn, strategy.baseValue()); // Manually checked the feature is right. The base value grows on divesting (by a 0.5% on this test).
+    }
+
+    function testBurnOnTiltedPool() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(address(strategy), burnAmount);
+
+        uint256 expectedBaseObtained = (burnAmount * strategy.baseValue() / strategy.totalSupply());
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        track("baseValue", strategy.baseValue());
+
+        uint256 baseObtained = strategy.burn(alice, alice, 0);
+
+        // We should have divested
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(address(strategy.pool()), address(0));
+
+        // baseObtained / (baseObtained + strategy.baseValue()) = burnAmount / (burnAmount + strategy.totalSupply())
+        uint256 baseObtainedRatio = baseObtained * 1e18 / (baseObtained + strategy.baseValue());
+        uint256 burnAmountRatio = burnAmount * 1e18 / (burnAmount + strategy.totalSupply());
+        assertApproxEqAbs(baseObtainedRatio, burnAmountRatio, 100);
+
+        assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
+        assertApproxEqAbs(strategy.baseValue(), baseObtained, 1); // We are burning half of the supply, the base obtained should be the same as the base remaining in the strategy
+    }
 
     function testDivestOnTiltedPool() public {
         console2.log("strategy.divest()");
@@ -676,6 +710,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
         uint256 expectedFYToken =
             pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+        assertGt(expectedFYToken, 0);
 
         strategy.divest();
 
@@ -690,6 +725,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
         uint256 expectedFYToken =
             pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+        assertGt(expectedFYToken, 0);
 
         vm.prank(alice);
         strategy.eject(0, type(uint256).max);
