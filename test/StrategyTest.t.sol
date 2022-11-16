@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import {Strategy} from "../contracts/Strategy.sol";
+import {Strategy, DivUp} from "../contracts/Strategy.sol";
 import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
@@ -390,12 +390,19 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
     function testMintInvestedTilted() public {
         console2.log("strategy.mint()");
         uint256 baseIn = pool.getBaseBalance() / 1000;
+        uint256 baseInPool = pool.getBaseBalance();
+        uint256 fyTokenInPool = pool.getFYTokenBalance() - pool.totalSupply();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
         track("baseValue", strategy.baseValue());
-        track("poolBaseBalance", pool.getBaseBalance());
+        track("poolBaseBalance", baseInPool);
+        track("poolFYTokenBalance", fyTokenInPool);
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-        uint256 poolMinted = (baseIn * pool.totalSupply()) / pool.getBaseBalance();
+        
+        uint256 baseToPool = DivUp.divUp(baseIn * baseInPool, baseInPool + fyTokenInPool);  // Rounds up
+        uint256 fyTokenToPool = baseIn - baseToPool;        // fyTokenToPool is rounded down
+        uint256 poolMinted = (pool.totalSupply() * fyTokenToPool) / fyTokenInPool;
+        assertGt(fyTokenToPool, 0);
 
         cash(baseToken, address(strategy), baseIn);
         vm.prank(alice);
@@ -404,8 +411,9 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         assertEq(minted, baseIn);
         assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
         assertTrackPlusEq("baseValue", baseIn, strategy.baseValue());
-        assertTrackPlusApproxEqAbs("poolBaseBalance", baseIn, pool.getBaseBalance(), 100);
-        assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
+        assertTrackPlusApproxEqAbs("poolBaseBalance", baseToPool, pool.getBaseBalance(), 100); // `getBaseBalance` depends on Euler
+        assertTrackPlusEq("poolFYTokenBalance", fyTokenToPool, pool.getFYTokenBalance() - pool.totalSupply());
+        assertTrackPlusEq("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)));
     }
 
     function testBurnInvestedTilted() public {
