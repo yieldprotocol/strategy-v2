@@ -197,12 +197,15 @@ contract DivestedStateTest is DivestedState {
 
     function testBurnDivested() public {
         console2.log("strategy.burn()");
-        uint256 burnAmount = strategy.balanceOf(bob) / 2;
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(address(strategy), burnAmount);
         assertGt(burnAmount, 0);
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
         strategy.burn(alice, alice, 0);
 
         assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
