@@ -14,8 +14,6 @@ import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
-import "forge-std/console.sol";
-
 // TODO: Can we make this a fancy free function?
 library DivUp {
     /// @dev Divide a between b, rounding up
@@ -70,8 +68,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     bytes6 public seriesId;                      // Identifier for the current seriesId
     // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
     IPool public pool;                           // Current pool that this strategy invests in
-    uint256 public cachedBase;                   // While divested, base tokens owned by the strategy. While invested, value of the strategy holdings in base terms.
 
+    uint256 public baseValue;                    // While divested, base tokens owned by the strategy. While invested, value of the strategy holdings in base terms.
     uint256 public ejected;                      // In emergencies, the strategy can keep fyToken
 
     constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IFYToken fyToken_)
@@ -175,7 +173,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         delete vaultId;
 
         require (_totalSupply == 0, "Already initialized");
-        cachedBase = minted = base.balanceOf(address(this));
+        baseValue = minted = base.balanceOf(address(this));
         require (minted > 0, "Not enough base in");
         // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
         _mint(to, minted);
@@ -196,7 +194,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Caching
         IPool pool_ =  IPool(ladle.pools(seriesId_));
         IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
-        uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
+        uint256 cached_ = baseValue; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
 
@@ -257,7 +255,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
         // Reset the base cache
-        cachedBase = base.balanceOf(address(this));
+        baseValue = base.balanceOf(address(this));
 
         // Transition to Divested
         delete seriesId;
@@ -295,7 +293,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
         // Reset the base cache
-        cachedBase = base.balanceOf(address(this));
+        baseValue = base.balanceOf(address(this));
 
         // If there are any fyToken left, transition to ejected state
         uint256 ejected_ = fyTokenReceived - toRepay;
@@ -332,7 +330,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         bytes6 seriesId_ = seriesId;
         IFYToken fyToken_ = fyToken;
 
-        uint256 baseIn = base.balanceOf(address(this)) - cachedBase;
+        uint256 baseIn = base.balanceOf(address(this)) - baseValue;
         uint256 fyTokenBalance = fyToken_.balanceOf(address(this));
         (soldFYToken, returnedBase) = baseIn > fyTokenBalance ? (fyTokenBalance, baseIn - fyTokenBalance) : (baseIn, 0);
 
@@ -346,7 +344,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
 
         // Update base cache
-        cachedBase += soldFYToken;
+        baseValue += soldFYToken;
 
         // Transfer fyToken and base (if surplus)
         fyToken_.safeTransfer(fyTokenTo, soldFYToken);
@@ -369,9 +367,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // If we are invested and past maturity, divest
         if (pool_ != address(0) && block.timestamp >= maturity) {
+            uint256 deposit = base.balanceOf(address(this)); // Cache the deposit
             this.divest();
+            baseValue -= deposit; // Release the deposit
+            pool_ = address(pool);
         }
-
 
         if (pool_ == address(0)) {
             minted = _mintDivested(to);
@@ -388,14 +388,15 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         external
         returns (uint256 withdrawal)
     {
-        uint256 maturity_ = maturity;
+        address pool_ = address(pool);
 
         // If we are invested and past maturity, divest
-        if (maturity_ > 0 && block.timestamp >= maturity_) {
+        if (pool_ != address(0) && block.timestamp >= maturity) {
             this.divest();
+            pool_ = address(pool);
         }
 
-        if (maturity_ == 0) {
+        if (pool_ == address(0)) {
             withdrawal = _burnDivested(baseTo, ejectedFYTokenTo);
         } else {
             withdrawal = _burnInvested(baseTo, minBaseReceived);
@@ -411,7 +412,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         // Caching
         IPool pool_ = pool;
-        uint256 cached_ = cachedBase;
+        uint256 cached_ = baseValue;
 
         // minted = supply * value(deposit) / value(strategy)
 
@@ -419,7 +420,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 deposit = base.balanceOf(address(this));
 
         // Update the base cache
-        cachedBase = cached_ + deposit;
+        baseValue = cached_ + deposit;
 
         // Mint strategy tokens
         minted = _totalSupply * deposit / cached_;
@@ -452,7 +453,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
-        uint256 cached_ = cachedBase;
+        uint256 cached_ = baseValue;
 
         // Burn strategy tokens
         uint256 burnt = _balanceOf[address(this)];
@@ -478,7 +479,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
 
         // Update cached base
-        cachedBase = cached_ - baseFromBurn - fyTokenReceived; // Internally, we always value fyToken at 1:1
+        baseValue = cached_ - baseFromBurn - fyTokenReceived; // Internally, we always value fyToken at 1:1
 
         // Function return
         baseObtained = baseFromBurn + toRepay + baseFromSale;
@@ -495,9 +496,9 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
-        uint256 cached_ = cachedBase;
+        uint256 cached_ = baseValue;
         uint256 deposit = base.balanceOf(address(this)) - cached_;
-        cachedBase = cached_ + deposit;
+        baseValue = cached_ + deposit;
 
         minted = _totalSupply * deposit / (cached_ + ejected); // We value ejected fyToken at 1:1
 
@@ -512,12 +513,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         divested
         returns (uint256 withdrawal)
     {
-        console.log(1);
         // strategy * burnt/supply = withdrawal
-        uint256 cached_ = cachedBase;
+        uint256 cached_ = baseValue;
         uint256 burnt = _balanceOf[address(this)];
         withdrawal = cached_ * burnt / _totalSupply;
-        cachedBase -= withdrawal; // TODO: What if there isn't enough base for the transfer?
+        baseValue -= withdrawal; // TODO: What if there isn't enough base for the transfer?
 
         _burn(address(this), burnt);
         base.safeTransfer(baseTo, withdrawal);

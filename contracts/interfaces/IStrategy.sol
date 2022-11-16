@@ -37,7 +37,7 @@ interface IStrategy is IStrategyMigrator {
     function seriesId() external view returns(bytes6);                      // Identifier for the current seriesId
     function fyToken() external view returns(IFYToken);                     // Current fyToken for this strategy (inherited from StrategyMigrator)
     function pool() external view returns(IPool);                           // Current pool that this strategy invests in
-    function cachedBase() external view returns(uint256);                   // Base tokens owned by the strategy after the last operation
+    function baseValue() external view returns(uint256);                   // Base tokens owned by the strategy after the last operation
     function ejected() external view returns(EjectedSeries memory);                // In emergencies, the strategy can keep fyToken of one series
 
     /// @dev Set a new Ladle and Cauldron
