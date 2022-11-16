@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
-import "./interfaces/IStrategy.sol";
-import "./StrategyMigrator.sol";
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
+import {StrategyMigrator} from "./StrategyMigrator.sol";
+import {AccessControl} from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
+import {SafeERC20Namer} from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
+import {MinimalTransferHelper} from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
+import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import {ERC20Rewards} from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
+import {CastU256I128} from "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
+import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
+import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 import "forge-std/console2.sol";
 
@@ -44,9 +44,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using MinimalTransferHelper for IFYToken;
-    using CastU256U128 for uint256; // Inherited from ERC20Rewards
     using CastU256I128 for uint256;
-    using CastU128I128 for uint128;
 
     event LadleSet(ILadle ladle);
     event TokenJoinReset(address join);
