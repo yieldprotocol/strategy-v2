@@ -18,17 +18,6 @@ import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 /// to underlying as much as possible. If any fyToken can't be exchanged for underlying, the
 /// strategy will hold them until maturity when `redeemEjected` can be used.
 interface IStrategy is IStrategyMigrator {
-
-    struct EjectedSeries {
-        bytes6 seriesId;
-        uint128 cached;
-    }
-
-    event Invested(address indexed pool, uint256 baseInvested, uint256 lpTokensObtained);
-    event Divested(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained);
-    event Ejected(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained, uint256 fyTokenObtained);
-    event Redeemed(bytes6 indexed seriesId, uint256 redeemedFYToken, uint256 receivedBase);
-
     function ladle() external view returns(ILadle);                         // Gateway to the Yield v2 Collateralized Debt Engine
     function cauldron() external view returns(ICauldron);                   // Accounts in the Yield v2 Collateralized Debt Engine
     function baseId() external view returns(bytes6);                        // Identifier for the base token in Yieldv2
@@ -39,27 +28,10 @@ interface IStrategy is IStrategyMigrator {
     function fyToken() external view returns(IFYToken);                     // Current fyToken for this strategy (inherited from StrategyMigrator)
     function pool() external view returns(IPool);                           // Current pool that this strategy invests in
     function baseValue() external view returns(uint256);                   // Base tokens owned by the strategy after the last operation
-    function ejected() external view returns(EjectedSeries memory);                // In emergencies, the strategy can keep fyToken of one series
-
-    /// @dev Set a new Ladle and Cauldron
-    /// @notice Use with extreme caution, only for Ladle replacements
-    function setYield(ILadle ladle_) external;
-
-    /// @dev Set a new base token id
-    /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
-    function setTokenId(bytes6 baseId_) external;
-
-    /// @dev Reset the base token join
-    /// @notice Use with extreme caution, only for Join replacements
-    function resetTokenJoin() external;
-
-    // ----------------------- STATE CHANGES --------------------------- //
-
-    /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
-    function mint(address, address, uint256, uint256) external override returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted);
+    function ejected() external view returns(uint256);                // In emergencies, the strategy can keep fyToken of one series
 
     /// @dev Mint the first strategy tokens, without investing
-    function init(address to) external returns (uint256 minted);
+    function init(address to) external;
 
     /// @dev Start the strategy investments in the next pool
     /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
@@ -77,26 +49,21 @@ interface IStrategy is IStrategyMigrator {
 
     // ----------------------- EJECTED FYTOKEN --------------------------- //
 
-    /// @dev Redeem ejected fyToken in the strategy for base
-    function redeemEjected(uint256 redeemedFYToken) external;
+    /// @dev Buy ejected fyToken in the strategy at face value
+    /// @param fyTokenTo Address to send the purchased fyToken to.
+    /// @param baseTo Address to send any remaining base to.
+    /// @return soldFYToken Amount of fyToken sold.
+    function buyEjected(address fyTokenTo, address baseTo) external returns (uint256 soldFYToken, uint256 returnedBase);
 
     // ----------------------- MINT & BURN --------------------------- //
 
     /// @dev Mint strategy tokens.
-    /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
+    /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to, uint256 minRatio, uint256 maxRatio) external returns (uint256 minted);
+ 
 
-    /// @dev Burn strategy tokens to withdraw lp tokens. The lp tokens obtained won't be of the same pool that the investor deposited,
-    /// if the strategy has swapped to another pool.
+    /// @dev Burn strategy tokens to withdraw base tokens.
+    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived) external returns (uint256 withdrawal);
-
-    /// @dev Mint strategy tokens with base tokens. It can be called only when a pool is not selected.
-    /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
-    function mintDivested(address to) external returns (uint256 minted);
-
-    /// @dev Burn strategy tokens to withdraw base tokens. It can be called only when a pool is not selected.
-    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnDivested(address baseTo, address ejectedFYTokenTo) external returns (uint256 withdrawal);
-
 }
