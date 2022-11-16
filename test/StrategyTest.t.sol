@@ -446,6 +446,29 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         assertTrackMinusApproxGeAbs("baseValue", baseExpected, strategy.totalSupply(), 100);
     }
 
+    function testBurnTryCatch() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole);
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(address(strategy), burnAmount);
+
+        track("baseValue", strategy.baseValue());
+        track("bobBaseTokens", baseToken.balanceOf(bob));
+        track("strategySupply", strategy.totalSupply());
+        uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
+
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(bob, bob, 0);
+
+        // assertEq(fyTokenObtained, 0);
+        // assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
+        // assertApproxGeAbs(baseExpected, baseObtained, baseExpected / 100);
+        // assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
+        // assertTrackMinusApproxGeAbs("baseValue", baseExpected, strategy.totalSupply(), 100);
+    }
+
     function testEjectTilted() public {
         console2.log("strategy.eject()");
 
@@ -765,6 +788,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 // InvestedTilted
 //   mint ✓
 //   burn ✓
+//   burn without liquidity
 //   divest -> Divested ✓
 //   eject -> DivestedAndEjected ✓
 //   time passes -> InvestedTiltedAfterMaturity  ✓

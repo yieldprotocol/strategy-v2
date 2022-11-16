@@ -483,7 +483,9 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
 
         // Update cached base
-        baseValue = cached_ - baseFromBurn - fyTokenReceived; // Internally, we always value fyToken at 1:1
+        console2.log(cached_);
+        console2.log(baseFromBurn + fyTokenReceived);
+        baseValue = cached_ - baseFromBurn - toRepay - baseFromSale - fyTokenObtained; // TODO: If we get fyTokenObtained, it's value must be less than 1:1
 
         // Function return
         baseObtained = baseFromBurn + toRepay + baseFromSale;
