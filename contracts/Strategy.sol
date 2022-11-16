@@ -44,6 +44,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using MinimalTransferHelper for IFYToken;
+    using MinimalTransferHelper for IPool;
     using CastU256I128 for uint256;
 
     event LadleSet(ILadle ladle);
@@ -245,7 +246,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 toDivest = pool_.balanceOf(address(this));
 
         // Burn lpTokens
-        IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
+        pool_.safeTransfer(address(pool_), toDivest);
         (, uint256 baseFromBurn, uint256 fyTokenFromBurn) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
 
         // Redeem any fyToken
@@ -279,13 +280,13 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 toDivest = pool_.balanceOf(address(this));
 
         // Burn lpTokens
-        IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
+        pool_.safeTransfer(address(pool_), toDivest);
         (, uint256 baseReceived, uint256 fyTokenReceived) = pool_.burn(address(this), address(this), minRatio, maxRatio);
 
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
         uint256 toRepay = debt < fyTokenReceived ? debt : fyTokenReceived;
-        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
+        fyToken_.safeTransfer(address(fyToken_), toRepay);
         ladle.pour(vaultId, address(this), -(toRepay).i128(), -(toRepay).i128());
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
@@ -377,11 +378,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
     }
 
-
     /// @dev Burn strategy tokens to withdraw base tokens.
     /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived)
+    function burn(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         external
         returns (uint256 withdrawal)
     {
@@ -394,9 +394,9 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
 
         if (pool_ == address(0)) {
-            withdrawal = _burnDivested(baseTo, ejectedFYTokenTo);
+            withdrawal = _burnDivested(baseTo, fyTokenTo);
         } else {
-            withdrawal = _burnInvested(baseTo, minBaseReceived);
+            withdrawal = _burnInvested(baseTo, fyTokenTo, minBaseReceived);
         }
     }
 
@@ -442,7 +442,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     /// @dev Burn strategy tokens to withdraw base tokens.
     /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function _burnInvested(address baseTo, uint256 minBaseReceived)
+    function _burnInvested(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         internal
         invested
         returns (uint256 baseObtained)
@@ -460,22 +460,26 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
             // Burn lpTokens
             uint256 withdrawal = pool.balanceOf(address(this)) * burnt / totalSupply_;
-            IERC20(address(pool_)).safeTransfer(address(pool_), withdrawal);
+            pool_.safeTransfer(address(pool_), withdrawal);
         }
         (, uint256 baseFromBurn, uint256 fyTokenReceived) = pool_.burn(baseTo, address(this), 0, type(uint256).max);
 
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
         uint256 toRepay = debt < fyTokenReceived ? debt : fyTokenReceived;
-        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
+        fyToken_.safeTransfer(address(fyToken_), toRepay);
         ladle.pour(vaultId, address(this), -(toRepay.i128()), -(toRepay.i128()));
 
         // Sell any fyToken that are left
         uint256 baseFromSale;
         uint256 toSell = fyTokenReceived - toRepay;
         if (toSell > 0) {
-            IERC20(address(fyToken_)).safeTransfer(address(pool_), toSell);
-            baseFromSale = pool_.sellFYToken(baseTo, 0); // TODO: Wrap on a try/catch and send the fyToken if it reverts
+            fyToken_.safeTransfer(address(pool_), toSell);
+            try pool_.sellFYToken(baseTo, 0) returns (uint128 baseFromSale_) {
+                baseFromSale = baseFromSale_;
+            } catch {
+                fyToken_.safeTransfer(fyTokenTo, toSell);
+            }
         }
 
         // Update cached base
@@ -532,7 +536,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function _transferEjected(address to, uint256 amount)
         internal
     {
-        IERC20(address(fyToken)).safeTransfer(to, amount);
+        fyToken.safeTransfer(to, amount);
 
         if ((ejected -= amount) == 0) {
             // Transition to Divested
