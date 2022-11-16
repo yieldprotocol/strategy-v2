@@ -14,7 +14,8 @@ import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
-// TODO: Can we make this a fancy free function?
+import "forge-std/console2.sol";
+
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
@@ -250,9 +251,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         (, uint256 baseFromBurn, uint256 fyTokenFromBurn) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
 
         // Redeem any fyToken
-        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenFromBurn); // TODO: Necessary?
         uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
-        // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
         // Reset the base cache
         baseValue = base.balanceOf(address(this));
