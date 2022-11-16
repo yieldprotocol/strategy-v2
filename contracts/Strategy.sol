@@ -517,15 +517,17 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         // strategy * burnt/supply = withdrawal
         uint256 cached_ = baseValue;
+        uint256 totalSupply_ = _totalSupply;
         uint256 burnt = _balanceOf[address(this)];
         withdrawal = cached_ * burnt / _totalSupply;
-        baseValue -= withdrawal; // TODO: What if there isn't enough base for the transfer?
+        baseValue -= withdrawal; // TODO: Are we certain we don't leak value after `divest` or `eject`?
 
         _burn(address(this), burnt);
         base.safeTransfer(baseTo, withdrawal);
 
         // If we have ejected fyToken, we we give them out in the same proportion
-        if (ejected > 0) _transferEjected(ejectedFYTokenTo, (ejected * burnt).divUp(_totalSupply)); // Let's not leave a lonely wei
+        uint256 ejected_ = ejected;
+        if (ejected_ > 0) _transferEjected(ejectedFYTokenTo, (ejected_ * burnt).divUp(totalSupply_)); // Let's not leave a lonely wei
     }
 
     /// @dev Transfer out fyToken from the ejected cache

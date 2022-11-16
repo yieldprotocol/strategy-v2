@@ -499,21 +499,19 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
 
         // Let's dig some tokens out of the hole
         vm.prank(hole);
-        strategy.transfer(bob, burnAmount);
+        strategy.transfer(address(strategy), burnAmount);
         uint256 ejected = strategy.ejected();
 
         uint256 expectedBaseObtained = (burnAmount * strategy.baseValue() / strategy.totalSupply());
-        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejected;
+        uint256 expectedFYTokenObtained = DivUp.divUp(burnAmount * ejected, strategy.totalSupply());
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
-        track("bobFYTokens", fyToken.balanceOf(bob));
+        track("aliceFYTokens", fyToken.balanceOf(alice));
         track("baseValue", strategy.baseValue());
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
         uint256 baseObtained = strategy.burn(alice, alice, 0);
 
         assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
-        assertTrackPlusEq("bobFYTokens", expectedFYTokenObtained, fyToken.balanceOf(bob));
+        assertTrackPlusEq("aliceFYTokens", expectedFYTokenObtained, fyToken.balanceOf(alice));
         assertTrackMinusEq("baseValue", baseObtained, strategy.baseValue());
     }
 
