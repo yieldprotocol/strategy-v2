@@ -388,8 +388,8 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
     function testMintDivestedAndEjected() public {
         console2.log("strategy.mint()");
         uint256 baseIn = strategy.cachedBase() / 1000;
-        (, uint256 ejectedCached) = strategy.ejected();
-        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / (strategy.cachedBase() + ejectedCached);
+        uint256 ejected = strategy.ejected();
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / (strategy.cachedBase() + ejected);
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
         track("cachedBase", strategy.cachedBase());
@@ -411,10 +411,10 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         // Let's dig some tokens out of the hole
         vm.prank(hole);
         strategy.transfer(bob, burnAmount);
-        (, uint256 ejectedCached) = strategy.ejected();
+        uint256 ejected = strategy.ejected();
 
         uint256 expectedBaseObtained = (burnAmount * strategy.cachedBase() / strategy.totalSupply());
-        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejectedCached;
+        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejected;
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
         track("bobFYTokens", fyToken.balanceOf(bob));
@@ -442,7 +442,7 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         uint initialBuy = fyTokenAvailable / 2;
         cash(baseToken, address(strategy), initialBuy);
         vm.prank(bob);
-        uint256 bought = strategy.buyEjected(alice, bob);
+        (uint256 bought,) = strategy.buyEjected(alice, bob);
 
         assertEq(bought, initialBuy);
         assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
@@ -454,17 +454,26 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         track("bobBaseTokens", baseToken.balanceOf(address(bob)));
         uint remainingFYToken = fyToken.balanceOf(address(strategy));
         uint secondBuy = remainingFYToken * 2;
+        uint returned;
         cash(baseToken, address(strategy), secondBuy);
         vm.prank(bob);
-        bought = strategy.buyEjected(alice, bob);
+        (bought, returned) = strategy.buyEjected(alice, bob);
 
         assertEq(bought, remainingFYToken);
+        assertEq(returned, remainingFYToken);
         assertEq(initialBuy + remainingFYToken, fyTokenAvailable);
         assertTrackPlusEq("aliceFYTokens", fyTokenAvailable, fyToken.balanceOf(alice));
         assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
         assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
         assertTrackPlusEq("cachedBase", fyTokenAvailable, strategy.cachedBase());
+
+        // State variables are reset
+        assertEq(strategy.seriesId(), bytes6(0));
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(uint256(strategy.maturity()), 0);
+        assertEq(address(strategy.pool()), address(0));
+        assertEq(bytes12(strategy.vaultId()), bytes12(0));
     } // --> Divested
 
     function testNoInvestWhileEjected() public {
@@ -557,10 +566,9 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
         assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
 
-        (bytes6 ejectedSeriesId, uint256 ejectedCached) = strategy.ejected();
-        assertEq(ejectedSeriesId, seriesId);
-        assertApproxEqAbs(ejectedCached, expectedFYToken, 100);
-        assertGt(ejectedCached, 0);
+        uint256 ejected = strategy.ejected();
+        assertApproxEqAbs(ejected, expectedFYToken, 100);
+        assertGt(ejected, 0);
     } // --> DivestedAndEjected
 }
 
