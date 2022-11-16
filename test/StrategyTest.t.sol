@@ -17,7 +17,7 @@ interface DonorStrategy {
     function pool() external view returns (IPool);
 }
 
-abstract contract ZeroState is Test {
+abstract contract DeployedState is Test {
     using stdStorage for StdStorage;
 
     // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
@@ -108,7 +108,7 @@ abstract contract ZeroState is Test {
     }
 }
 
-contract ZeroStateTest is ZeroState {
+contract DeployedStateTest is DeployedState {
     function testInit() public {
         console2.log("strategy.init()");
         uint256 initAmount = 10 ** baseToken.decimals();
@@ -123,7 +123,7 @@ contract ZeroStateTest is ZeroState {
         assertEq(strategy.cachedBase(), initAmount);
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
         assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
-    }
+    } // --> DivestedState
 
     function testNoEmptyInit() public {
         console2.log("strategy.init()");
@@ -142,7 +142,7 @@ contract ZeroStateTest is ZeroState {
     }
 }
 
-abstract contract DivestedState is ZeroState {
+abstract contract DivestedState is DeployedState {
     function setUp() public virtual override {
         super.setUp();
         uint256 initAmount = 100 * 10 ** baseToken.decimals();
@@ -239,7 +239,7 @@ contract DivestedStateTest is DivestedState {
         assertEq(address(strategy.fyToken()), address(fyToken));
         assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
         assertEq(address(strategy.pool()), address(pool));
-    }
+    } // --> InvestedState
 
     function testInvestOnTiltedPool() public {
         console2.log("strategy.invest()");
@@ -276,7 +276,7 @@ contract DivestedStateTest is DivestedState {
         //
         //        // Strategy gets the pool increase in total supply
         //        assertTrackPlusEq("strategyPoolBalance", pool.totalSupply() - poolTotalSupplyBefore, pool.balanceOf(address(strategy)));
-    }
+    } // --> InvestedTiltedState
 }
 
 abstract contract InvestedState is DivestedState {
@@ -309,8 +309,6 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
     }
 
-    function testMintOnTiltedPool() public {}
-
     function testBurnInvested() public {
         console2.log("strategy.burn()");
         uint256 burnAmount = strategy.balanceOf(hole) / 2;
@@ -333,29 +331,6 @@ contract InvestedStateTest is InvestedState {
         assertApproxEqAbs(baseExpected, baseObtained, 100);
         assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
         assertTrackMinusApproxEqAbs("cachedBase", baseExpected, strategy.totalSupply(), 100);
-    }
-
-    function testBurnOnTiltedPool() public {}
-
-    // TODO: Move to its own state (InvestedTiltedMature)
-    function testDivestOnTiltedPool() public {
-        console2.log("strategy.divest()");
-
-        // Tilt the pool
-        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
-        pool.sellFYToken(hole, 0);
-
-        vm.warp(pool.maturity());
-
-        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-        uint256 expectedFYToken =
-            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
-
-        strategy.divest();
-
-        assertEq(pool.balanceOf(address(strategy)), 0);
-        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
-        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
     }
 
     function testEjectAuth() public {
@@ -384,30 +359,19 @@ contract InvestedStateTest is InvestedState {
         assertEq(uint256(strategy.maturity()), 0);
         assertEq(address(strategy.pool()), address(0));
         assertEq(bytes12(strategy.vaultId()), bytes12(0));
-    }
+    } // --> DivestedAndEjectedState
+}
 
-    function testEjectOnTiltedPool() public {
-        console2.log("strategy.divest()");
+abstract contract InvestedTiltedState is DivestedState {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.prank(alice);
+        strategy.invest(seriesId, 0, type(uint256).max);
 
+        // TODO: Tilt the pool before investing
         // Tilt the pool
         cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
         pool.sellFYToken(hole, 0);
-
-        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-        uint256 expectedFYToken =
-            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
-
-        vm.prank(alice);
-        strategy.eject(0, type(uint256).max);
-
-        assertEq(pool.balanceOf(address(strategy)), 0);
-        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
-
-        (bytes6 ejectedSeriesId, uint256 ejectedCached) = strategy.ejected();
-        assertEq(ejectedSeriesId, seriesId);
-        assertApproxEqAbs(ejectedCached, expectedFYToken, 100);
-        assertGt(ejectedCached, 0);
     }
 }
 
@@ -441,6 +405,31 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         assertEq(minted, expectedMinted);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
         assertTrackPlusEq("cachedBase", baseIn, strategy.cachedBase());
+    }
+
+    function testBurnDivestedAndEjected() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(bob, burnAmount);
+        (, uint256 ejectedCached) = strategy.ejected();
+
+        uint256 expectedBaseObtained = (burnAmount * strategy.cachedBase() / strategy.totalSupply());
+        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejectedCached;
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        track("bobFYTokens", fyToken.balanceOf(bob));
+        track("cachedBase", strategy.cachedBase());
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        uint256 baseObtained = strategy.burn(alice, alice, 0);
+
+        assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
+        assertTrackPlusEq("bobFYTokens", expectedFYTokenObtained, fyToken.balanceOf(bob));
+        assertTrackMinusEq("cachedBase", baseObtained, strategy.cachedBase());
     }
 
     function testBuyEjectedDivestedAndEjected() public {
@@ -480,34 +469,9 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
         assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
         assertTrackPlusEq("cachedBase", fyTokenAvailable, strategy.cachedBase());
-    }
+    } // --> Divested
 
-    function testBurnDivestedAndEjected() public {
-        console2.log("strategy.burn()");
-        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-        assertGt(burnAmount, 0);
-
-        // Let's dig some tokens out of the hole
-        vm.prank(hole);
-        strategy.transfer(bob, burnAmount);
-        (, uint256 ejectedCached) = strategy.ejected();
-
-        uint256 expectedBaseObtained = (burnAmount * strategy.cachedBase() / strategy.totalSupply());
-        uint256 expectedFYTokenObtained = (burnAmount * strategy.totalSupply()) / ejectedCached;
-
-        track("aliceBaseTokens", baseToken.balanceOf(alice));
-        track("bobFYTokens", fyToken.balanceOf(bob));
-        track("cachedBase", strategy.cachedBase());
-        vm.prank(bob);
-        strategy.transfer(address(strategy), burnAmount);
-        uint256 baseObtained = strategy.burn(alice, alice, 0);
-
-        assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
-        assertTrackPlusEq("bobFYTokens", expectedFYTokenObtained, fyToken.balanceOf(bob));
-        assertTrackMinusEq("cachedBase", baseObtained, strategy.cachedBase());
-    }
-
-    function testInvestDivestedAndEjected() public {
+    function testNoInvestWhileEjected() public {
         // TODO: Check state changes
         console2.log("strategy.invest()");
         vm.prank(alice);
@@ -523,6 +487,18 @@ abstract contract InvestedAfterMaturity is InvestedState {
 }
 
 contract TestInvestedAfterMaturity is InvestedAfterMaturity {
+    function testMintInvestedAfterMaturity() public {
+        console2.log("strategy.mint()");
+        uint256 baseIn = pool.getBaseBalance() / 1000;
+        cash(baseToken, address(strategy), baseIn);
+
+        vm.expectRevert("Not invested"); // TODO: Alberto - is this right?
+        vm.prank(alice);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
+    }
+
+    function testBurnInvestedAfterMaturity() public {}
+
     function testDivestInvestedAfterMaturity() public {
         console2.log("strategy.divest()");
 
@@ -540,22 +516,57 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         assertEq(uint256(strategy.maturity()), 0);
         assertEq(address(strategy.pool()), address(0));
         assertEq(bytes12(strategy.vaultId()), bytes12(0));
-    }
-
-    function testMintInvestedAfterMaturity() public {
-        console2.log("strategy.mint()");
-        uint256 baseIn = pool.getBaseBalance() / 1000;
-        cash(baseToken, address(strategy), baseIn);
-
-        vm.expectRevert("Not invested"); // TODO: Alberto - is this right?
-        vm.prank(alice);
-        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
-    }
-
-    function testBurnInvestedAfterMaturity() public {}
-
+    } // --> Divested
 }
 
+abstract contract InvestedTiltedAfterMaturity is InvestedTiltedState {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.warp(pool.maturity());
+    }
+}
+
+contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
+    function testMintOnTiltedPool() public {}
+
+    function testBurnOnTiltedPool() public {}
+
+    function testDivestOnTiltedPool() public {
+        console2.log("strategy.divest()");
+
+        vm.warp(pool.maturity());
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        uint256 expectedFYToken =
+            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        strategy.divest();
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
+    } // --> DivestedAndEjected
+
+    function testEjectOnTiltedPool() public {
+        console2.log("strategy.divest()");
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        uint256 expectedFYToken =
+            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        vm.prank(alice);
+        strategy.eject(0, type(uint256).max);
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
+
+        (bytes6 ejectedSeriesId, uint256 ejectedCached) = strategy.ejected();
+        assertEq(ejectedSeriesId, seriesId);
+        assertApproxEqAbs(ejectedCached, expectedFYToken, 100);
+        assertGt(ejectedCached, 0);
+    } // --> DivestedAndEjected
+}
 
 // }
 // Deployed
@@ -568,18 +579,20 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 // Invested
 //   mint ✓
 //   burn ✓
+//   divest -> Divested ✓
 //   eject -> DivestedAndEjected ✓
 //   time passes -> InvestedAfterMaturity ✓
 //   sell fyToken into pool -> InvestedTilted ✓
 // InvestedTilted
 //   mint ✓
 //   burn ✓
+//   divest -> Divested ✓
 //   eject -> DivestedAndEjected ✓
 //   time passes -> InvestedTiltedAfterMaturity  ✓
 // DivestedAndEjected
 //   mint  - ✓
-//   burn  - ✓ fixed -- formula was backwards
-//   buy - ✓
+//   burn  - ✓ 
+//   buy -> DivestedAndEjectedAfterMaturity ✓ TODO: Clear up ejected state
 //   invest -> Invested ✓
 //   time passes -> DivestedAndEjectedAfterMaturity  ✓
 // InvestedAfterMaturity
@@ -587,6 +600,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 //   burn
 //   divest -> Divested ✓
 // InvestedTiltedAfterMaturity
-//   divest -> Divested ✓ TODO: Move test to state.
 //   mint
 //   burn
+//   divest -> Divested ✓
+//   eject -> DivestedAndEjected ✓
