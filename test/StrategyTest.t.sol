@@ -509,9 +509,39 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         // Alice's new strategy tokens should be the right proportion of the strategy base value
         uint256 expectedStrategyTokens = (baseIn * strategy.totalSupply()) / strategy.baseValue();
         assertTrackPlusEq("bobStrategyTokens", expectedStrategyTokens, strategy.balanceOf(bob));
+        assertEq(expectedStrategyTokens, minted);
+        // assertTrackPlusEq("baseValue", baseIn, strategy.baseValue()); // TODO: Manually checked the feature is right. The base value grows on divesting (by a 0.5% on this test).
     }
 
-    function testBurnInvestedAfterMaturity() public {}
+    function testBurnInvestedAfterMaturity() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(bob, burnAmount);
+
+        uint256 expectedBaseObtained = (burnAmount * strategy.baseValue() / strategy.totalSupply());
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        track("baseValue", strategy.baseValue());
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        uint256 baseObtained = strategy.burn(alice, alice, 0);
+
+        // We should have divested
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(address(strategy.pool()), address(0));
+
+        // baseObtained / (baseObtained + strategy.baseValue()) = burnAmount / (burnAmount + strategy.totalSupply())
+        uint256 baseObtainedRatio = baseObtained * 1e18 / (baseObtained + strategy.baseValue());
+        uint256 burnAmountRatio = burnAmount * 1e18 / (burnAmount + strategy.totalSupply());
+        assertApproxEqAbs(baseObtainedRatio, burnAmountRatio, 100);
+
+        assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
+        // assertTrackMinusEq("baseValue", baseObtained, strategy.baseValue()); // TODO: Check what's going on
+    }
 
     function testDivestInvestedAfterMaturity() public {
         console2.log("strategy.divest()");
@@ -605,7 +635,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 // DivestedAndEjected
 //   mint  - ✓
 //   burn  - ✓ 
-//   buy -> DivestedAndEjectedAfterMaturity ✓ TODO: Clear up ejected state
+//   buy -> DivestedAndEjectedAfterMaturity ✓
 //   invest -> Invested ✓
 //   time passes -> DivestedAndEjectedAfterMaturity  ✓
 // InvestedAfterMaturity
