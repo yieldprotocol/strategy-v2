@@ -54,9 +54,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint128 cached;
     }
 
-    event YieldSet(ILadle ladle, ICauldron cauldron);
+    event LadleSet(ILadle ladle);
     event TokenJoinReset(address join);
-    event TokenIdSet(bytes6 id);
 
     event Invested(address indexed pool, uint256 baseInvested, uint256 lpTokensObtained);
     event Divested(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained);
@@ -67,8 +66,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     // TODO: Global variables can be packed
 
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
-    ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
-    bytes6 public baseId;                        // Identifier for the base token in Yieldv2
+    ICauldron public immutable cauldron;         // Accounts in the Yield v2 Collateralized Debt Engine
+    bytes6 public immutable baseId;              // Identifier for the base token in Yieldv2
     // IERC20 public immutable base;             // Base token for this strategy (inherited from StrategyMigrator)
     address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
 
@@ -116,32 +115,15 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         _;
     }
 
-    /// @dev Set a new Ladle and Cauldron
+    /// @dev Set a new Ladle
     /// @notice Use with extreme caution, only for Ladle replacements
-    function setYield(ILadle ladle_)
+    function setLadle(ILadle ladle_)
         external
         divested
         auth
     {
         ladle = ladle_;
-        ICauldron cauldron_ = ladle_.cauldron();
-        cauldron = cauldron_;
-        emit YieldSet(ladle_, cauldron_);
-    }
-
-    /// @dev Set a new base token id
-    /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
-    function setTokenId(bytes6 baseId_)
-        external
-        divested
-        auth
-    {
-        require(
-            ladle.cauldron().assets(baseId_) == address(base),
-            "Mismatched baseId"
-        );
-        baseId = baseId_;
-        emit TokenIdSet(baseId_);
+        emit LadleSet(ladle_);
     }
 
     /// @dev Reset the base token join
