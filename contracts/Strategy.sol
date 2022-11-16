@@ -477,7 +477,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 toSell = fyTokenReceived - toRepay;
         if (toSell > 0) {
             IERC20(address(fyToken_)).safeTransfer(address(pool_), toSell);
-            baseFromSale = pool_.sellFYToken(baseTo, 0);
+            baseFromSale = pool_.sellFYToken(baseTo, 0); // TODO: Wrap on a try/catch and send the fyToken if it reverts
         }
 
         // Update cached base
