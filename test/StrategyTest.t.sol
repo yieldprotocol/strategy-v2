@@ -79,6 +79,21 @@ abstract contract DeployedState is Test {
         assertApproxEqAbs(tracked[id] - minus, amount, delta);
     }
 
+    function assertApproxGeAbs(uint256 a, uint256 b, uint256 delta) public {
+        assertGe(a, b);
+        assertApproxEqAbs(a, b, delta);
+    }
+
+    function assertTrackPlusApproxGeAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
+        assertGe(tracked[id] + plus, amount);
+        assertApproxEqAbs(tracked[id] + plus, amount, delta);
+    }
+
+    function assertTrackMinusApproxGeAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
+        assertGe(tracked[id] - minus, amount);
+        assertApproxEqAbs(tracked[id] - minus, amount, delta);
+    }
+
     function setUp() public virtual {
         vm.createSelectFork("mainnet", 15741300);
 
@@ -371,6 +386,69 @@ abstract contract InvestedTiltedState is DivestedState {
     }
 }
 
+contract InvestedTiltedStateTest is InvestedTiltedState {
+    function testMintInvestedTilted() public {
+        console2.log("strategy.mint()");
+        uint256 baseIn = pool.getBaseBalance() / 1000;
+
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        track("baseValue", strategy.baseValue());
+        track("poolBaseBalance", pool.getBaseBalance());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 poolMinted = (baseIn * pool.totalSupply()) / pool.getBaseBalance();
+
+        cash(baseToken, address(strategy), baseIn);
+        vm.prank(alice);
+        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
+
+        assertEq(minted, baseIn);
+        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
+        assertTrackPlusEq("baseValue", baseIn, strategy.baseValue());
+        assertTrackPlusApproxEqAbs("poolBaseBalance", baseIn, pool.getBaseBalance(), 100);
+        assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
+    }
+
+    function testBurnInvestedTilted() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(bob, burnAmount);
+
+        track("baseValue", strategy.baseValue());
+        track("bobBaseTokens", baseToken.balanceOf(bob));
+        track("strategySupply", strategy.totalSupply());
+        uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
+
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
+        uint256 baseObtained = strategy.burn(bob, bob, 0);
+
+        assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
+        assertApproxGeAbs(baseExpected, baseObtained, baseExpected / 100);
+        assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
+        assertTrackMinusApproxGeAbs("baseValue", baseExpected, strategy.totalSupply(), 100);
+    }
+
+    function testEjectTilted() public {
+        console2.log("strategy.eject()");
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+
+        vm.prank(alice);
+        strategy.eject(0, type(uint256).max);
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.baseValue(), baseToken.balanceOf(address(strategy)));
+
+        // State variables are reset
+        assertEq(address(strategy.pool()), address(0));
+    } // --> DivestedAndEjectedState
+}
+
 abstract contract DivestedAndEjectedState is InvestedState {
     function setUp() public virtual override {
         super.setUp();
@@ -640,7 +718,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 //   time passes -> DivestedAndEjectedAfterMaturity  ✓
 // InvestedAfterMaturity
 //   mint ✓
-//   burn
+//   burn ✓
 //   divest -> Divested ✓
 // InvestedTiltedAfterMaturity
 //   mint

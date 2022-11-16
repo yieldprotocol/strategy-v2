@@ -14,6 +14,8 @@ import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
+import "forge-std/console2.sol";
+
 library DivUp {
     /// @dev Divide a between b, rounding up
     function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
@@ -451,28 +453,31 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
         uint256 cached_ = baseValue;
+        { // Stack too deep
+            uint256 totalSupply_ = _totalSupply;
 
-        // Burn strategy tokens
-        uint256 burnt = _balanceOf[address(this)];
-        _burn(address(this), burnt);
+            // Burn strategy tokens
+            uint256 burnt = _balanceOf[address(this)];
+            _burn(address(this), burnt);
 
-        // Burn lpTokens
-        uint256 withdrawal = pool.balanceOf(address(this)) * burnt / _totalSupply;
-        IERC20(address(pool_)).safeTransfer(address(pool_), withdrawal);
+            // Burn lpTokens
+            uint256 withdrawal = pool.balanceOf(address(this)) * burnt / totalSupply_;
+            IERC20(address(pool_)).safeTransfer(address(pool_), withdrawal);
+        }
         (, uint256 baseFromBurn, uint256 fyTokenReceived) = pool_.burn(baseTo, address(this), 0, type(uint256).max);
 
         // Repay as much debt as possible
         uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = debt < fyTokenReceived ? fyTokenReceived : debt;
+        uint256 toRepay = debt < fyTokenReceived ? debt : fyTokenReceived;
         IERC20(address(fyToken_)).safeTransfer(address(fyToken_), toRepay);
         ladle.pour(vaultId, address(this), -(toRepay.i128()), -(toRepay.i128()));
 
         // Sell any fyToken that are left
-        uint256 toSell = fyTokenReceived - toRepay;
         uint256 baseFromSale;
+        uint256 toSell = fyTokenReceived - toRepay;
         if (toSell > 0) {
             IERC20(address(fyToken_)).safeTransfer(address(pool_), toSell);
-            baseFromSale = pool_.sellFYToken(address(this), 0);
+            baseFromSale = pool_.sellFYToken(baseTo, 0);
         }
 
         // Update cached base
