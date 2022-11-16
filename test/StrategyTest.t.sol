@@ -510,7 +510,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         uint256 expectedStrategyTokens = (baseIn * strategy.totalSupply()) / strategy.baseValue();
         assertTrackPlusEq("bobStrategyTokens", expectedStrategyTokens, strategy.balanceOf(bob));
         assertEq(expectedStrategyTokens, minted);
-        // assertTrackPlusEq("baseValue", baseIn, strategy.baseValue()); // TODO: Manually checked the feature is right. The base value grows on divesting (by a 0.5% on this test).
+        // assertTrackPlusEq("baseValue", baseIn, strategy.baseValue()); // Manually checked the feature is right. The base value grows on divesting (by a 0.5% on this test).
     }
 
     function testBurnInvestedAfterMaturity() public {
@@ -540,7 +540,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         assertApproxEqAbs(baseObtainedRatio, burnAmountRatio, 100);
 
         assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
-        // assertTrackMinusEq("baseValue", baseObtained, strategy.baseValue()); // TODO: Check what's going on
+        assertEq(strategy.baseValue(), baseObtained); // We are burning half of the supply, the base obtained should be the same as the base remaining in the strategy
     }
 
     function testDivestInvestedAfterMaturity() public {
