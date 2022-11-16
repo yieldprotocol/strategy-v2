@@ -354,11 +354,7 @@ contract InvestedStateTest is InvestedState {
         assertEq(strategy.cachedBase(), baseToken.balanceOf(address(strategy)));
 
         // State variables are reset
-        assertEq(strategy.seriesId(), bytes6(0));
-        assertEq(address(strategy.fyToken()), address(0));
-        assertEq(uint256(strategy.maturity()), 0);
         assertEq(address(strategy.pool()), address(0));
-        assertEq(bytes12(strategy.vaultId()), bytes12(0));
     } // --> DivestedAndEjectedState
 }
 
@@ -472,8 +468,8 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
     } // --> Divested
 
     function testNoInvestWhileEjected() public {
-        // TODO: Check state changes
         console2.log("strategy.invest()");
+        vm.expectRevert(bytes("Is ejected"));
         vm.prank(alice);
         strategy.invest(seriesId, 0, type(uint256).max);
     }

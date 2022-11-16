@@ -101,7 +101,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     modifier invested() {
         require (
-            maturity != 0,
+            address(pool) != address(0),
             "Not invested"
         );
         _;
@@ -109,8 +109,24 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     modifier divested() {
         require (
-            maturity == 0,
+            address(pool) == address(0),
             "Not divested"
+        );
+        _;
+    }
+
+    modifier isEjected() {
+        require (
+            ejected.cached > 0,
+            "Not ejected"
+        );
+        _;
+    }
+
+    modifier notEjected() {
+        require (
+            ejected.cached == 0,
+            "Is ejected"
         );
         _;
     }
@@ -178,6 +194,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         external
         auth
         divested
+        notEjected
     {
         require (_totalSupply > 0, "Init Strategy first");
 
@@ -187,8 +204,6 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 cached_ = cachedBase; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
-        // TODO: Don't allow investing with ejected fyToken
-        // There are some risks of getting stuck until maturity, but also simplifies the state machine
 
         // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
         // Deposit (investment * p) base to borrow (investment * p) fyToken
@@ -251,7 +266,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         emit Divested(address(pool_), toDivest, baseFromBurn + baseFromRedeem);
 
-        // Update state variables
+        // Transition to Divested
         delete seriesId;
         delete fyToken;
         delete maturity;
@@ -297,12 +312,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         emit Ejected(address(pool_), toDivest, baseReceived + toRepay, fyTokenReceived - toRepay);
 
-        // Update state variables
-        delete seriesId;
-        delete fyToken;
-        delete maturity;
+        // Transition to Ejected
         delete pool;
-        delete vaultId; // We either burned all the fyToken, or there is no debt left.
     }
 
     // ----------------------- EJECTED FYTOKEN --------------------------- //
@@ -314,6 +325,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function buyEjected(address fyTokenTo, address baseTo)
         external
         divested
+        isEjected
         returns (uint256 soldFYToken)
     {
         // Caching
@@ -325,7 +337,14 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         soldFYToken = baseIn > fyTokenBalance ? fyTokenBalance : baseIn;
 
         // Update ejected and reset if done
-        if ((ejected.cached -= soldFYToken.u128()) == 0) delete ejected;
+        if ((ejected.cached -= soldFYToken.u128()) == 0) {
+            delete ejected;
+            // Transition to Divested
+            delete seriesId;
+            delete fyToken;
+            delete maturity;
+            delete vaultId; // We either burned all the fyToken, or there is no debt left.
+        }
 
         // update base cache
         cachedBase += soldFYToken;
@@ -347,15 +366,15 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         external
         returns (uint256 minted)
     {
-        uint256 maturity_ = maturity;
+        address pool_ = address(pool);
 
         // If we are invested and past maturity, divest
-        if (maturity_ > 0 && block.timestamp >= maturity_) {
+        if (pool_ != address(0) && block.timestamp >= maturity) {
             this.divest();
         }
 
 
-        if (maturity_ == 0) {
+        if (pool_ == address(0)) {
             minted = _mintDivested(to);
         } else {
             minted = _mintInvested(to, minRatio, maxRatio);
