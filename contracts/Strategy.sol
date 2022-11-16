@@ -383,7 +383,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         external
-        returns (uint256 withdrawal)
+        returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         address pool_ = address(pool);
 
@@ -394,9 +394,9 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         }
 
         if (pool_ == address(0)) {
-            withdrawal = _burnDivested(baseTo, fyTokenTo);
+            (baseObtained, fyTokenObtained) = _burnDivested(baseTo, fyTokenTo);
         } else {
-            withdrawal = _burnInvested(baseTo, fyTokenTo, minBaseReceived);
+            (baseObtained, fyTokenObtained) = _burnInvested(baseTo, fyTokenTo, minBaseReceived);
         }
     }
 
@@ -445,7 +445,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function _burnInvested(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         internal
         invested
-        returns (uint256 baseObtained)
+        returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         // Caching
         IPool pool_ = pool;
@@ -475,10 +475,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 toSell = fyTokenReceived - toRepay;
         if (toSell > 0) {
             fyToken_.safeTransfer(address(pool_), toSell);
-            try pool_.sellFYToken(baseTo, 0) returns (uint128 baseFromSale_) {
+            try pool_.sellFYToken(baseTo, 0) returns (uint128 baseFromSale_) { // The pool might not have liquidity for this sale
                 baseFromSale = baseFromSale_;
             } catch {
-                fyToken_.safeTransfer(fyTokenTo, toSell);
+                fyToken_.safeTransfer(fyTokenTo, fyTokenObtained = toSell);
             }
         }
 
@@ -515,28 +515,29 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function _burnDivested(address baseTo, address ejectedFYTokenTo)
         internal
         divested
-        returns (uint256 withdrawal)
+        returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         // strategy * burnt/supply = withdrawal
         uint256 cached_ = baseValue;
         uint256 totalSupply_ = _totalSupply;
         uint256 burnt = _balanceOf[address(this)];
-        withdrawal = cached_ * burnt / _totalSupply;
-        baseValue -= withdrawal; // TODO: Are we certain we don't leak value after `divest` or `eject`?
+        baseObtained = cached_ * burnt / _totalSupply;
+        baseValue -= baseObtained; // TODO: Are we certain we don't leak value after `divest` or `eject`?
 
         _burn(address(this), burnt);
-        base.safeTransfer(baseTo, withdrawal);
+        base.safeTransfer(baseTo, baseObtained);
 
         // If we have ejected fyToken, we we give them out in the same proportion
         uint256 ejected_ = ejected;
-        if (ejected_ > 0) _transferEjected(ejectedFYTokenTo, (ejected_ * burnt).divUp(totalSupply_)); // Let's not leave a lonely wei
+        if (ejected_ > 0) fyTokenObtained = _transferEjected(ejectedFYTokenTo, (ejected_ * burnt).divUp(totalSupply_)); // Let's not leave a lonely wei
     }
 
     /// @dev Transfer out fyToken from the ejected cache
     function _transferEjected(address to, uint256 amount)
         internal
+        returns (uint256 fyTokenObtained)
     {
-        fyToken.safeTransfer(to, amount);
+        fyToken.safeTransfer(to, fyTokenObtained = amount);
 
         if ((ejected -= amount) == 0) {
             // Transition to Divested

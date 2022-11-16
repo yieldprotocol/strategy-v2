@@ -205,9 +205,11 @@ contract DivestedStateTest is DivestedState {
         assertGt(burnAmount, 0);
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
-        strategy.burn(alice, alice, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
 
-        assertTrackPlusEq("aliceBaseTokens", burnAmount, baseToken.balanceOf(alice));
+        assertEq(baseObtained, burnAmount);
+        assertEq(fyTokenObtained, 0);
+        assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
     }
 
     function testNoAuthInvest() public {
@@ -345,8 +347,9 @@ contract InvestedStateTest is InvestedState {
         track("strategySupply", strategy.totalSupply());
         uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
 
-        uint256 baseObtained = strategy.burn(bob, bob, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(bob, bob, 0);
 
+        assertEq(fyTokenObtained, 0);
         assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
         assertApproxEqAbs(baseExpected, baseObtained, 100);
         assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
@@ -434,8 +437,9 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         track("strategySupply", strategy.totalSupply());
         uint256 baseExpected = (burnAmount * strategy.baseValue()) / strategy.totalSupply();
 
-        uint256 baseObtained = strategy.burn(bob, bob, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(bob, bob, 0);
 
+        assertEq(fyTokenObtained, 0);
         assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
         assertApproxGeAbs(baseExpected, baseObtained, baseExpected / 100);
         assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
@@ -506,8 +510,9 @@ contract TestDivestedAndEjected is DivestedAndEjectedState {
         track("aliceBaseTokens", baseToken.balanceOf(alice));
         track("aliceFYTokens", fyToken.balanceOf(alice));
         track("baseValue", strategy.baseValue());
-        uint256 baseObtained = strategy.burn(alice, alice, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
 
+        assertEq(fyTokenObtained, expectedFYTokenObtained);
         assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
         assertTrackPlusEq("aliceFYTokens", expectedFYTokenObtained, fyToken.balanceOf(alice));
         assertTrackMinusEq("baseValue", baseObtained, strategy.baseValue());
@@ -609,7 +614,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         track("aliceBaseTokens", baseToken.balanceOf(alice));
         track("baseValue", strategy.baseValue());
 
-        uint256 baseObtained = strategy.burn(alice, alice, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
 
         // We should have divested
         assertEq(address(strategy.fyToken()), address(0));
@@ -620,6 +625,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
         uint256 burnAmountRatio = burnAmount * 1e18 / (burnAmount + strategy.totalSupply());
         assertApproxEqAbs(baseObtainedRatio, burnAmountRatio, 100);
 
+        assertEq(fyTokenObtained, 0);
         assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
         assertEq(strategy.baseValue(), baseObtained); // We are burning half of the supply, the base obtained should be the same as the base remaining in the strategy
     }
@@ -687,7 +693,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
         track("aliceBaseTokens", baseToken.balanceOf(alice));
         track("baseValue", strategy.baseValue());
 
-        uint256 baseObtained = strategy.burn(alice, alice, 0);
+        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
 
         // We should have divested
         assertEq(address(strategy.fyToken()), address(0));
@@ -698,6 +704,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
         uint256 burnAmountRatio = burnAmount * 1e18 / (burnAmount + strategy.totalSupply());
         assertApproxEqAbs(baseObtainedRatio, burnAmountRatio, 100);
 
+        assertEq(fyTokenObtained, 0);
         assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
         assertApproxEqAbs(strategy.baseValue(), baseObtained, 1); // We are burning half of the supply, the base obtained should be the same as the base remaining in the strategy
     }
