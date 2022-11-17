@@ -309,7 +309,6 @@ contract InvestedStateTest is InvestedState {
         console2.log("strategy.eject()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-        // uint256 expectedFYToken = pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
 
         vm.prank(alice);
         strategy.eject();
@@ -325,70 +324,19 @@ contract InvestedStateTest is InvestedState {
     } // --> Ejected
 }
 
-//abstract contract InvestedTiltedState is DivestedState {
-//    function setUp() public virtual override {
-//        super.setUp();
-//        vm.prank(alice);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//
-//        // TODO: Tilt the pool before investing
-//        // Tilt the pool
-//        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
-//        pool.sellFYToken(hole, 0);
-//    }
-//}
-//
-//contract InvestedTiltedStateTest is InvestedTiltedState {
-//    function testMintInvestedTilted() public {
-//        console2.log("strategy.mint()");
-//        uint256 baseIn = pool.getBaseBalance() / 1000;
-//        uint256 baseInPool = pool.getBaseBalance();
-//        uint256 fyTokenInPool = pool.getFYTokenBalance() - pool.totalSupply();
-//
-//        track("bobStrategyTokens", strategy.balanceOf(bob));
-//        track("cached", strategy.cached());
-//        track("poolBaseBalance", baseInPool);
-//        track("poolFYTokenBalance", fyTokenInPool);
-//        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-//        
-//        uint256 baseToPool = DivUp.divUp(baseIn * baseInPool, baseInPool + fyTokenInPool);  // Rounds up
-//        uint256 fyTokenToPool = baseIn - baseToPool;        // fyTokenToPool is rounded down
-//        uint256 poolMinted = (pool.totalSupply() * fyTokenToPool) / fyTokenInPool;
-//        assertGt(fyTokenToPool, 0);
-//
-//        cash(baseToken, address(strategy), baseIn);
-//        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
-//
-//        assertEq(minted, baseIn);
-//        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
-//        assertTrackPlusEq("cached", baseIn, strategy.cached());
-//        assertTrackPlusApproxEqAbs("poolBaseBalance", baseToPool, pool.getBaseBalance(), 100); // `getBaseBalance` depends on Euler
-//        assertTrackPlusEq("poolFYTokenBalance", fyTokenToPool, pool.getFYTokenBalance() - pool.totalSupply());
-//        assertTrackPlusEq("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)));
-//    }
-//
-//    function testBurnInvestedTilted() public {
-//        console2.log("strategy.burn()");
-//        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-//        assertGt(burnAmount, 0);
-//
-//        // Let's dig some tokens out of the hole
-//        vm.prank(hole);
-//        strategy.transfer(address(strategy), burnAmount);
-//
-//        track("cached", strategy.cached());
-//        track("bobBaseTokens", baseToken.balanceOf(bob));
-//        track("strategySupply", strategy.totalSupply());
-//        uint256 baseExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
-//
-//        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(bob, bob, 0);
-//
-//        assertEq(fyTokenObtained, 0);
-//        assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
-//        assertApproxGeAbs(baseExpected, baseObtained, baseExpected / 100);
-//        assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
-//        assertTrackMinusApproxGeAbs("cached", baseExpected, strategy.totalSupply(), 100);
-//    }
+abstract contract InvestedTiltedState is DivestedState {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.prank(alice);
+        strategy.invest(pool);
+
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+    }
+}
+
+contract InvestedTiltedStateTest is InvestedTiltedState {
 //
 //    function testBurnTryCatch() public {
 //        console2.log("strategy.burn()");
@@ -413,22 +361,25 @@ contract InvestedStateTest is InvestedState {
 //        // assertTrackMinusApproxGeAbs("cached", baseExpected, strategy.totalSupply(), 100);
 //    }
 //
-//    function testEjectTilted() public {
-//        console2.log("strategy.eject()");
-//
-//        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-//
-//        vm.prank(alice);
-//        strategy.eject(0, type(uint256).max);
-//
-//        assertEq(pool.balanceOf(address(strategy)), 0);
-//        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-//        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
-//
-//        // State variables are reset
-//        assertEq(address(strategy.pool()), address(0));
-//    } // --> DivestedAndEjectedState
-//}
+    function testEjectTilted() public {
+        console2.log("strategy.eject()");
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        uint256 expectedFYToken = pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        vm.prank(alice);
+        strategy.eject();
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(fyToken.balanceOf(address(strategy)), expectedFYToken);
+        assertEq(strategy.fyTokenCached(), fyToken.balanceOf(address(strategy)));
+
+        // State variables are reset
+        assertEq(address(strategy.pool()), address(0));
+    } // --> EjectedState
+}
 //
 //abstract contract DivestedAndEjectedState is InvestedState {
 //    function setUp() public virtual override {
