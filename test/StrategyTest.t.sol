@@ -380,115 +380,65 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         assertEq(address(strategy.pool()), address(0));
     } // --> EjectedState
 }
-//
-//abstract contract DivestedAndEjectedState is InvestedState {
-//    function setUp() public virtual override {
-//        super.setUp();
-//
-//        // Tilt the pool
-//        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
-//        pool.sellFYToken(hole, 0);
-//
-//        vm.prank(alice);
-//        strategy.eject(0, type(uint256).max);
-//    }
-//}
-//
-//contract TestDivestedAndEjected is DivestedAndEjectedState {
-//    function testMintDivestedAndEjected() public {
-//        console2.log("strategy.mint()");
-//        uint256 baseIn = strategy.cached() / 1000;
-//        uint256 ejected = strategy.ejected();
-//        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / (strategy.cached() + ejected);
-//
-//        track("bobStrategyTokens", strategy.balanceOf(bob));
-//        track("cached", strategy.cached());
-//
-//        cash(baseToken, address(strategy), baseIn);
-//        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
-//
-//        assertEq(minted, expectedMinted);
-//        assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-//        assertTrackPlusEq("cached", baseIn, strategy.cached());
-//    }
-//
-//    function testBurnDivestedAndEjected() public {
-//        console2.log("strategy.burn()");
-//        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-//        assertGt(burnAmount, 0);
-//
-//        // Let's dig some tokens out of the hole
-//        vm.prank(hole);
-//        strategy.transfer(address(strategy), burnAmount);
-//        uint256 ejected = strategy.ejected();
-//
-//        uint256 expectedBaseObtained = (burnAmount * strategy.cached() / strategy.totalSupply());
-//        uint256 expectedFYTokenObtained = DivUp.divUp(burnAmount * ejected, strategy.totalSupply());
-//
-//        track("aliceBaseTokens", baseToken.balanceOf(alice));
-//        track("aliceFYTokens", fyToken.balanceOf(alice));
-//        track("cached", strategy.cached());
-//        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
-//
-//        assertEq(fyTokenObtained, expectedFYTokenObtained);
-//        assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));
-//        assertTrackPlusEq("aliceFYTokens", expectedFYTokenObtained, fyToken.balanceOf(alice));
-//        assertTrackMinusEq("cached", baseObtained, strategy.cached());
-//    }
-//
-//    function testBuyEjectedDivestedAndEjected() public {
-//        console2.log("strategy.buyEjected()");
-//
-//        uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
-//        track("aliceFYTokens", fyToken.balanceOf(alice));
-//        track("strategyFYToken", fyTokenAvailable);
-//        assertEq(baseToken.balanceOf(address(strategy)), strategy.cached());
-//        track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
-//        track("cached", strategy.cached());
-//
-//        // initial buy - half of ejected fyToken balance
-//        uint initialBuy = fyTokenAvailable / 2;
-//        cash(baseToken, address(strategy), initialBuy);
-//        (uint256 bought,) = strategy.buyEjected(alice, bob);
-//
-//        assertEq(bought, initialBuy);
-//        assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
-//        assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
-//        assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
-//        assertTrackPlusEq("cached", initialBuy, strategy.cached());
-//
-//        // second buy - transfer in double the remaining fyToken and expect refund of base
-//        track("bobBaseTokens", baseToken.balanceOf(address(bob)));
-//        uint remainingFYToken = fyToken.balanceOf(address(strategy));
-//        uint secondBuy = remainingFYToken * 2;
-//        uint returned;
-//        cash(baseToken, address(strategy), secondBuy);
-//        (bought, returned) = strategy.buyEjected(alice, bob);
-//
-//        assertEq(bought, remainingFYToken);
-//        assertEq(returned, remainingFYToken);
-//        assertEq(initialBuy + remainingFYToken, fyTokenAvailable);
-//        assertTrackPlusEq("aliceFYTokens", fyTokenAvailable, fyToken.balanceOf(alice));
-//        assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
-//        assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
-//        assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
-//        assertTrackPlusEq("cached", fyTokenAvailable, strategy.cached());
-//
-//        // State variables are reset
-//        assertEq(strategy.seriesId(), bytes6(0));
-//        assertEq(address(strategy.fyToken()), address(0));
-//        assertEq(uint256(strategy.maturity()), 0);
-//        assertEq(address(strategy.pool()), address(0));
-//        assertEq(bytes12(strategy.vaultId()), bytes12(0));
-//    } // --> Divested
-//
-//    function testNoInvestWhileEjected() public {
-//        console2.log("strategy.invest()");
-//        vm.expectRevert(bytes("Is ejected"));
-//        vm.prank(alice);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//    }
-//}
+
+abstract contract EjectedState is InvestedState {
+    function setUp() public virtual override {
+        super.setUp();
+
+        // Tilt the pool
+        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
+        pool.sellFYToken(hole, 0);
+
+        vm.prank(alice);
+        strategy.eject();
+    }
+}
+
+contract TestEjected is EjectedState {//    function testMintDivestedAndEjected() public {//        console2.log("strategy.mint()");//        uint256 baseIn = strategy.cached() / 1000;//        uint256 ejected = strategy.ejected();//        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / (strategy.cached() + ejected);////        track("bobStrategyTokens", strategy.balanceOf(bob));//        track("cached", strategy.cached());////        cash(baseToken, address(strategy), baseIn);//        uint256 minted = strategy.mint(bob, 0, type(uint256).max);////        assertEq(minted, expectedMinted);//        assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));//        assertTrackPlusEq("cached", baseIn, strategy.cached());//    }////    function testBurnDivestedAndEjected() public {//        console2.log("strategy.burn()");//        uint256 burnAmount = strategy.balanceOf(hole) / 2;//        assertGt(burnAmount, 0);////        // Let's dig some tokens out of the hole//        vm.prank(hole);//        strategy.transfer(address(strategy), burnAmount);//        uint256 ejected = strategy.ejected();////        uint256 expectedBaseObtained = (burnAmount * strategy.cached() / strategy.totalSupply());//        uint256 expectedFYTokenObtained = DivUp.divUp(burnAmount * ejected, strategy.totalSupply());////        track("aliceBaseTokens", baseToken.balanceOf(alice));//        track("aliceFYTokens", fyToken.balanceOf(alice));//        track("cached", strategy.cached());//        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);////        assertEq(fyTokenObtained, expectedFYTokenObtained);//        assertTrackPlusEq("aliceBaseTokens", expectedBaseObtained, baseToken.balanceOf(alice));//        assertTrackPlusEq("aliceFYTokens", expectedFYTokenObtained, fyToken.balanceOf(alice));//        assertTrackMinusEq("cached", baseObtained, strategy.cached());//    }//
+    function testBuyFYToken() public {
+        console2.log("strategy.buyFYToken()");
+
+        uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
+        track("aliceFYTokens", fyToken.balanceOf(alice));
+        track("strategyFYToken", fyTokenAvailable);
+        assertEq(baseToken.balanceOf(address(strategy)), strategy.cached());
+        track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
+        track("cached", strategy.cached());
+
+        // initial buy - half of ejected fyToken balance
+        uint initialBuy = fyTokenAvailable / 2;
+        cash(baseToken, address(strategy), initialBuy);
+        (uint256 bought,) = strategy.buyFYToken(alice, bob);
+
+        assertEq(bought, initialBuy);
+        assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
+        assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
+        assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
+        assertTrackPlusEq("cached", initialBuy, strategy.cached());
+
+        // second buy - transfer in double the remaining fyToken and expect refund of base
+        track("bobBaseTokens", baseToken.balanceOf(address(bob)));
+        uint remainingFYToken = fyToken.balanceOf(address(strategy));
+        uint secondBuy = remainingFYToken * 2;
+        uint returned;
+        cash(baseToken, address(strategy), secondBuy);
+        (bought, returned) = strategy.buyFYToken(alice, bob);
+
+        assertEq(bought, remainingFYToken);
+        assertEq(returned, remainingFYToken);
+        assertEq(initialBuy + remainingFYToken, fyTokenAvailable);
+        assertTrackPlusEq("aliceFYTokens", fyTokenAvailable, fyToken.balanceOf(alice));
+        assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
+        assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
+        assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
+        assertTrackPlusEq("cached", fyTokenAvailable, strategy.cached());
+
+        // State variables are reset
+        assertEq(address(strategy.fyToken()), address(0));
+        assertEq(uint256(strategy.maturity()), 0);
+        assertEq(address(strategy.pool()), address(0));
+    } // --> Divested
+}
 //
 //abstract contract InvestedAfterMaturity is InvestedState {
 //    function setUp() public virtual override {
