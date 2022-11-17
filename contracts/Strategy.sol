@@ -138,10 +138,12 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 cached_ = cached; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
+        require(pool_.getFYTokenBalance() - pool_.totalSupply() == 0, "Only with no fyToken in the pool"); // TODO: Remove when replacing `pool.mint` for `pool.init`
 
         // Mint LP tokens and initialize the pool
         base.safeTransfer(address(pool_), cached_);
-        (,, poolTokensObtained) = pool_.init(address(this));
+        (,, poolTokensObtained) = pool_.mint(address(this), address(this), 0, type(uint256).max); // TODO: Replace this for `pool.init`
+        // (,, poolTokensObtained) = pool_.init(address(this));
         cached = poolTokensObtained;
 
         // Update state variables

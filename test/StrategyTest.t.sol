@@ -3,7 +3,7 @@ pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import {Strategy} from "../contracts/Strategy.sol";
+import {Strategy, AccessControl} from "../contracts/Strategy.sol";
 import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
@@ -29,7 +29,7 @@ abstract contract DeployedState is Test {
     // YSFRAX6MMS: 0x1565F539E96c4d440c38979dbc86Fd711C995DD6
     // YSFRAX6MJD: 0x47cC34188A2869dAA1cE821C8758AA8442715831
 
-    // TODO: Pin to block 15741200 on 2022 September to March roll, so that the March pool exists, but it isn't initialized.
+    // Pin to block 15741300 on 2022 September to March roll, so that the March pool exists and is initialized, but has no fyToken
     // Roll tx: https://etherscan.io/tx/0x26eb4d44a310d953db5bcf2fdd47350fadac8be60d0f7c00313a0f83c4ff8d6b
     // Pool: 0xbdc7bdae87dfe602e91fdd019c4c0334c38f6a46
 
@@ -103,6 +103,10 @@ abstract contract DeployedState is Test {
 
         // Strategy V2
         strategy = new Strategy("StrategyTest.t.sol", "test", baseToken.decimals(), fyToken);
+
+        // The strategy needs to be given permission to initalize the pool
+        // vm.prank(timelock);
+        // AccessControl(address(pool)).grantRole(IPool.init.selector, address(strategy));
 
         // Alice has privileged roles
         strategy.grantRole(Strategy.init.selector, alice);
@@ -216,46 +220,32 @@ contract DivestedStateTest is DivestedState {
         vm.prank(bob);
         strategy.invest(pool);
     }
-//
-//    function testInvest() public {
-//        console2.log("strategy.invest()");
-//
-//        uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
-//        track("poolBaseBalance", pool.getBaseBalance());
-//        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-//        uint256 poolTotalSupplyBefore = pool.totalSupply();
-//        assertGt(strategyBaseFunds, 0);
-//
-//        vm.prank(alice);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//
-//        // A vault for the series is built
-//        bytes12 vaultId = strategy.vaultId();
-//        assertFalse(vaultId == bytes12(0));
-//        DataTypes.Vault memory vault = cauldron.vaults(vaultId);
-//        assertEq(vault.seriesId, strategy.seriesId());
-//        assertEq(vault.ilkId, strategy.baseId()); // The vaults that the strategy creates have the same asset for base and for ilk
-//        assertEq(vault.owner, address(strategy));
-//
-//        // The vault balances stay at zero
-//        DataTypes.Balances memory balances = cauldron.balances(vaultId);
-//        assertEq(balances.ink, 0);
-//        assertEq(balances.art, 0);
-//
-//        // Base makes it to the pool
-//        assertTrackPlusApproxEqAbs("poolBaseBalance", strategyBaseFunds, pool.getBaseBalance(), 100); // We allow some room because Euler conversions might not be perfect
-//
-//        // Strategy gets the pool increase in total supply
-//        assertTrackPlusEq(
-//            "strategyPoolBalance", pool.totalSupply() - poolTotalSupplyBefore, pool.balanceOf(address(strategy))
-//        );
-//
-//        // State variables are set
-//        assertEq(strategy.seriesId(), seriesId);
-//        assertEq(address(strategy.fyToken()), address(fyToken));
-//        assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
-//        assertEq(address(strategy.pool()), address(pool));
-//    } // --> InvestedState
+
+    function testInvest() public {
+        console2.log("strategy.invest()");
+
+        uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
+        track("poolBaseBalance", pool.getBaseBalance());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 poolTotalSupplyBefore = pool.totalSupply();
+        assertGt(strategyBaseFunds, 0);
+
+        vm.prank(alice);
+        strategy.invest(pool);
+
+        // Base makes it to the pool
+        assertTrackPlusApproxEqAbs("poolBaseBalance", strategyBaseFunds, pool.getBaseBalance(), 100); // We allow some room because Euler conversions might not be perfect
+
+        // Strategy gets the pool increase in total supply
+        assertTrackPlusEq(
+            "strategyPoolBalance", pool.totalSupply() - poolTotalSupplyBefore, pool.balanceOf(address(strategy))
+        );
+
+        // State variables are set
+        assertEq(address(strategy.fyToken()), address(fyToken));
+        assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
+        assertEq(address(strategy.pool()), address(pool));
+    } // --> InvestedState
 //
 //    function testInvestOnTiltedPool() public {
 //        console2.log("strategy.invest()");
