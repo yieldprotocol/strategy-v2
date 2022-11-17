@@ -338,7 +338,7 @@ abstract contract InvestedTiltedState is DivestedState {
 
 contract InvestedTiltedStateTest is InvestedTiltedState {
 //
-//    function testBurnTryCatch() public {
+//    function testEjectTiltedToDrained() public {
 //        console2.log("strategy.burn()");
 //        uint256 burnAmount = strategy.balanceOf(hole);
 //        assertGt(burnAmount, 0);
@@ -361,7 +361,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
 //        // assertTrackMinusApproxGeAbs("cached", baseExpected, strategy.totalSupply(), 100);
 //    }
 //
-    function testEjectTilted() public {
+    function testEjectTiltedToEjected() public {
         console2.log("strategy.eject()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
@@ -526,12 +526,12 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 //   sell fyToken into pool -> InvestedTilted ✓
 // InvestedTilted
 //   eject -> Ejected ✓
-//   eject -> Blocked ✓
+//   eject -> Drained TODO
 //   time passes -> InvestedTiltedAfterMaturity  ✓
 // Ejected
 //   buyFYToken -> Divested ✓
 // Blocked
-//   restart -> Divested ✓
+//   restart -> Divested TODO
 // InvestedAfterMaturity
 //   divest -> Divested ✓
 //   eject -> Divested ✓
