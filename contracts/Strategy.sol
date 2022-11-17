@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
+// TODO: Check for reentrancy, although this doesn't interact with unknown contracts
+
 import {IStrategy} from "./interfaces/IStrategy.sol";
 import {StrategyMigrator} from "./StrategyMigrator.sol";
 import {AccessControl} from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
