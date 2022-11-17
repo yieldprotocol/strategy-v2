@@ -241,6 +241,16 @@ contract DivestedStateTest is DivestedState {
         vm.prank(alice);
         strategy.invest(pool);
     }
+    
+    function testNoFYTokenInvest() public {
+        console2.log("strategy.invest()");
+
+        pool = IPool(0x52956Fb3DC3361fd24713981917f2B6ef493DCcC); // DAI only
+
+        vm.expectRevert(bytes("Only with no fyToken in the pool"));
+        vm.prank(alice);
+        strategy.invest(pool);
+    }
 
     function testInvest() public {
         console2.log("strategy.invest()");
@@ -345,6 +355,13 @@ contract InvestedStateTest is InvestedState {
         assertEq(address(strategy.pool()), address(0));
         assertEq(uint256(strategy.state()), 1);
     } // --> Divested
+
+    function testNoDivestBeforeMaturity() public {
+        console2.log("strategy.divest()");
+
+        vm.expectRevert(bytes("Only after maturity"));
+        strategy.divest();
+    }
 }
 
 abstract contract InvestedTiltedState is DivestedState {
