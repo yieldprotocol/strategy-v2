@@ -296,30 +296,33 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
         assertTrackMinusEq("cached", poolObtained, strategy.cached());
     }
-//
-//    function testEjectAuth() public {
-//        console2.log("strategy.eject()");
-//
-//        vm.expectRevert(bytes("Access denied"));
-//        vm.prank(bob);
-//        strategy.eject(0, type(uint256).max);
-//    }
-//
-//    function testEject() public {
-//        console2.log("strategy.eject()");
-//
-//        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-//
-//        vm.prank(alice);
-//        strategy.eject(0, type(uint256).max);
-//
-//        assertEq(pool.balanceOf(address(strategy)), 0);
-//        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-//        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
-//
-//        // State variables are reset
-//        assertEq(address(strategy.pool()), address(0));
-//    } // --> DivestedAndEjectedState
+
+    function testEjectAuth() public {
+        console2.log("strategy.eject()");
+
+        vm.expectRevert(bytes("Access denied"));
+        vm.prank(bob);
+        strategy.eject();
+    }
+
+    function testEjectToDivested() public {
+        console2.log("strategy.eject()");
+
+        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
+        // uint256 expectedFYToken = pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+
+        vm.prank(alice);
+        strategy.eject();
+
+        assertEq(pool.balanceOf(address(strategy)), 0);
+        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
+        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(fyToken.balanceOf(address(strategy)), 0);
+        assertEq(strategy.fyTokenCached(), 0);
+
+        // State variables are reset
+        assertEq(address(strategy.pool()), address(0));
+    } // --> Ejected
 }
 
 //abstract contract InvestedTiltedState is DivestedState {
