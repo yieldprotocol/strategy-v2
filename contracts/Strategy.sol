@@ -11,8 +11,6 @@ import {ERC20Rewards} from "@yield-protocol/utils-v2/contracts/token/ERC20Reward
 import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
-import "forge-std/console2.sol";
-
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace
 /// pool tokens and receive strategy tokens that represent a stake in a YieldSpace pool contract.
 /// Upon maturity, the strategy can `divest` from the mature pool, becoming a proportional
@@ -21,13 +19,6 @@ import "forge-std/console2.sol";
 /// The strategy can also `eject` from a Pool before maturity. Any fyToken obtained will be sold
 /// at face value. If the pool tokens can't be burned, they will be ejected and the strategy can
 /// be recapitalized.
-
-/// TODO: Put these docs in the right spot.
-/// mint and burn are user functions. Users provide base and get strategy tokens on mint, and the reverse on burn. The strategy might be in different states while this happens.
-/// invest, divest and eject are governance functions (even if divest is open to all). They instruct the strategy what to do with the pooled user funds:
-/// invest: Only while divested. Put all the user funds in a pool. Become invested.
-/// divest: Only while invested on a mature pool. Pull all funds from the pool. Become divested.
-/// eject: Only while invested on a non-mature pool. Pull all funds from the pool. Become divested.
 contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
     enum State {DEPLOYED, DIVESTED, INVESTED, EJECTED, DRAINED}
     using MinimalTransferHelper for IERC20;

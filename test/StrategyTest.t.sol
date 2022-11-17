@@ -159,6 +159,13 @@ contract DeployedStateTest is DeployedState {
         vm.prank(alice);
         strategy.invest(pool);
     }
+
+    function testBurnPoolTokensNotForYou() public {
+        console2.log("strategy._burnPoolTokens()");
+
+        vm.expectRevert(bytes("Unauthorized"));
+        strategy._burnPoolTokens(pool, 0);
+    }
 }
 
 abstract contract DivestedState is DeployedState {
@@ -220,6 +227,18 @@ contract DivestedStateTest is DivestedState {
 
         vm.expectRevert(bytes("Access denied"));
         vm.prank(bob);
+        strategy.invest(pool);
+    }
+
+    function testNoMismatchedBaseInvest() public {
+        console2.log("strategy.invest()");
+
+        address DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        if (address(baseToken) == DAI) pool = IPool(0x1D2eB98042006B1bAFd10f33743CcbB573429daa); // FRAX
+        else pool = IPool(0xBdc7Bdae87dfE602E91FDD019c4C0334C38f6A46); // DAI
+
+        vm.expectRevert(bytes("Mismatched base"));
+        vm.prank(alice);
         strategy.invest(pool);
     }
 
