@@ -777,33 +777,24 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 // Divested
 //   mintDivested ✓
 //   burnDivested ✓
-//   invest -> Invested ✓  TODO: Tilted pool - If the pool has fyToken, this reverts
+//   invest -> Invested ✓
 // Invested
-//   mint ✓
-//   burn ✓
-//   divest -> Divested ✓
-//   eject -> DivestedAndEjected ✓
+//   mintInvested ✓
+//   burnInvested ✓
+//   eject -> Divested ✓
 //   time passes -> InvestedAfterMaturity ✓
 //   sell fyToken into pool -> InvestedTilted ✓
 // InvestedTilted
-//   mint ✓
-//   burn ✓
-//   burn without liquidity
-//   divest -> Divested ✓
-//   eject -> DivestedAndEjected ✓
+//   eject -> Ejected ✓
+//   eject -> Blocked ✓
 //   time passes -> InvestedTiltedAfterMaturity  ✓
-// DivestedAndEjected
-//   mint  - ✓
-//   burn  - ✓ 
-//   buy -> DivestedAndEjectedAfterMaturity ✓
-//   invest -> Invested ✓
-//   time passes -> DivestedAndEjectedAfterMaturity  ✓
+// Ejected
+//   buyFYToken -> Divested ✓
+// Blocked
+//   restart -> Divested ✓
 // InvestedAfterMaturity
-//   mint ✓
-//   burn ✓
 //   divest -> Divested ✓
+//   eject -> Divested ✓
 // InvestedTiltedAfterMaturity
-//   mint
-//   burn
 //   divest -> Divested ✓
-//   eject -> DivestedAndEjected ✓
+//   eject -> Ejected ✓
