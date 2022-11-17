@@ -18,52 +18,75 @@ import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 /// to underlying as much as possible. If any fyToken can't be exchanged for underlying, the
 /// strategy will hold them until maturity when `redeemEjected` can be used.
 interface IStrategy is IStrategyMigrator {
-    function ladle() external view returns(ILadle);                         // Gateway to the Yield v2 Collateralized Debt Engine
-    function cauldron() external view returns(ICauldron);                   // Accounts in the Yield v2 Collateralized Debt Engine
-    function baseId() external view returns(bytes6);                        // Identifier for the base token in Yieldv2
+    enum State {DEPLOYED, DIVESTED, INVESTED, EJECTED, DRAINED}
+
+    function state() external view returns(State);                          // The state determines which functions are available
     function base() external view returns(IERC20);                          // Base token for this strategy (inherited from StrategyMigrator)
-    function baseJoin() external view returns(address);                     // Yield v2 Join to deposit token when borrowing
-    function vaultId() external view returns(bytes12);                      // VaultId for the Strategy debt
-    function seriesId() external view returns(bytes6);                      // Identifier for the current seriesId
     function fyToken() external view returns(IFYToken);                     // Current fyToken for this strategy (inherited from StrategyMigrator)
     function pool() external view returns(IPool);                           // Current pool that this strategy invests in
-    function baseValue() external view returns(uint256);                   // Base tokens owned by the strategy after the last operation
-    function ejected() external view returns(uint256);                // In emergencies, the strategy can keep fyToken of one series
+    function cached() external view returns(uint256);                       // Base tokens owned by the strategy after the last operation
+    function fyTokenCached() external view returns(uint256);                // In emergencies, the strategy can keep fyToken of one series
 
     /// @dev Mint the first strategy tokens, without investing
-    function init(address to) external;
+    function init(address to)
+        external
+        returns (uint256 minted);
 
     /// @dev Start the strategy investments in the next pool
-    /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
-    /// @param maxRatio Maximum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
-    function invest(bytes6 seriesId_, uint256 minRatio, uint256 maxRatio) external;
+    function invest(IPool pool_)
+        external
+        returns (uint256 poolTokensObtained);
+
 
     /// @dev Divest out of a pool once it has matured
-    function divest() external;
+    function divest()
+        external
+        returns (uint256 baseObtained);
 
-    /// @dev Divest out of a pool at any time. The obtained fyToken will be used to repay debt.
-    /// Any surplus will be kept in the contract until maturity, at which point `redeemEjected`
-    /// should be called.
-    function eject(uint256 minRatio, uint256 maxRatio) external;
-
-    // ----------------------- EJECTED FYTOKEN --------------------------- //
+    /// @dev Divest out of a pool at any time. If possible the pool tokens will be burnt for base and fyToken, the latter of which
+    /// must be sold to return the strategy to a functional state. If the pool token burn reverts, the pool tokens will be transferred
+    /// to the caller as a last resort.
+    /// @notice The caller must take care of slippage when selling fyToken, if relevant.
+    function eject()
+        external
+        returns (uint256 baseObtained, uint256 fyTokenObtained);
 
     /// @dev Buy ejected fyToken in the strategy at face value
     /// @param fyTokenTo Address to send the purchased fyToken to.
     /// @param baseTo Address to send any remaining base to.
     /// @return soldFYToken Amount of fyToken sold.
-    function buyEjected(address fyTokenTo, address baseTo) external returns (uint256 soldFYToken, uint256 returnedBase);
+    /// @return returnedBase Amount of base unused and returned.
+    function buyFYToken(address fyTokenTo, address baseTo)
+        external
+        returns (uint256 soldFYToken, uint256 returnedBase);
 
-    // ----------------------- MINT & BURN --------------------------- //
+    /// @dev If we ejected the pool tokens, we can recapitalize the strategy to avoid a forced migration
+    function restart()
+        external
+        returns (uint256 baseIn);
 
-    /// @dev Mint strategy tokens.
-    /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
-    function mint(address to, uint256 minRatio, uint256 maxRatio) external returns (uint256 minted);
- 
+    /// @dev Mint strategy tokens with pool tokens. It can be called only when invested.
+    /// @notice The pool tokens that the user contributes need to have been transferred previously, using a batchable router.
+    function mintInvested(address to)
+        external
+        returns (uint256 minted);
 
-    /// @dev Burn strategy tokens to withdraw base tokens.
-    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
+    /// @dev Burn strategy tokens to withdraw pool tokens. It can be called only when invested.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burn(address baseTo, address ejectedFYTokenTo, uint256 minBaseReceived) external returns (uint256 withdrawal);
+    function burnInvested(address to)
+        external
+        returns (uint256 poolTokensObtained);
+
+    /// @dev Mint strategy tokens with base tokens. It can be called only when not invested and not ejected.
+    /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
+    function mintDivested(address to)
+        external
+        returns (uint256 minted);
+    
+    /// @dev Burn strategy tokens to withdraw base tokens. It can be called when not invested and not ejected.
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
+    function burnDivested(address baseTo)
+        external
+        returns (uint256 baseObtained);
 }
