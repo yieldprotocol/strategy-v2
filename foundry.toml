@@ -4,6 +4,6 @@ out = 'artifacts'
 libs = ['lib']
 solc_version = '0.8.15'
 
-rpc_endpoints = { mainnet = "${MAINNET_RPC}" }
+rpc_endpoints = { mainnet = "${ALCHEMY_MAINNET_RPC}" }
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
