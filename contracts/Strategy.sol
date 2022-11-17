@@ -43,14 +43,13 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     State public state;                          // The state determines which functions are available
 
     // IERC20 public immutable base;             // Base token for this strategy (inherited from StrategyMigrator)
-
     // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
     IPool public pool;                           // Current pool that this strategy invests in
 
     uint256 public cached;                       // While divested, base tokens held by the strategy; while invested, pool tokens held by the strategy
     uint256 public fyTokenCached;                // In emergencies, the strategy can keep fyToken
 
-    constructor(string memory name, string memory symbol, uint8 decimal, IFYToken fyToken_)
+    constructor(string memory name, string memory symbol, uint8 decimals, IFYToken fyToken_)
         ERC20Rewards(name, symbol, decimals)
         StrategyMigrator(
             IERC20(fyToken_.underlying()),
@@ -71,6 +70,26 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
             "Not allowed in this state"
         );
         _;
+    }
+
+    /// @dev State and state variable management
+    function _transition(State target, IPool pool_) internal {
+        if (target == State.INVESTED) {
+            pool = pool_;
+            fyToken = IFYToken(address(pool_.fyToken()));
+            maturity = pool_.maturity();
+        } else if (target == State.DIVESTED) {
+            delete fyToken;
+            delete maturity;
+            delete pool;
+        } else if (target == State.EJECTED) {
+            delete maturity;
+            delete pool;
+        } else if (target == State.DRAINED) {
+            delete maturity;
+            delete pool;
+        }
+        state = target;
     }
 
     // ----------------------- INVEST & DIVEST --------------------------- //
@@ -138,6 +157,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function divest()
         external
         isState(State.INVESTED)
+        returns (uint256 baseObtained)
     {
         // Caching
         IPool pool_ = pool;
@@ -158,26 +178,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // Transition to Divested
         _transition(State.DIVESTED, pool_);
-        emit Divested(address(pool_), toDivest, baseFromBurn + baseFromRedeem);
-    }
-
-    function _transition(State target, IPool pool_) internal {
-        if (target == State.INVESTED) {
-            pool = pool_;
-            fyToken = IFYToken(address(pool_.fyToken()));
-            maturity = pool_.maturity();
-        } else if (target == State.DIVESTED) {
-            delete fyToken;
-            delete maturity;
-            delete pool;
-        } else if (target == State.EJECTED) {
-            delete maturity;
-            delete pool;
-        } else if (target == State.DRAINED) {
-            delete maturity;
-            delete pool;
-        }
-        state = target;
+        emit Divested(address(pool_), toDivest, baseObtained = baseFromBurn + baseFromRedeem);
     }
 
     // ----------------------- EJECT --------------------------- //
@@ -190,16 +191,17 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         external
         auth
         isState(State.INVESTED)
+        returns (uint256 baseReceived, uint256 fyTokenReceived)
     {
         // Caching
         IPool pool_ = pool;
         uint256 toDivest = pool_.balanceOf(address(this));
 
         // Burn lpTokens, if not possible, eject the pool tokens out. Slippage should be managed by the caller.
-        try this._burnPoolTokens(pool_, toDivest) returns (uint256 baseReceived, uint256 fyTokenReceived) {
-            cached = baseReceived;
+        try this._burnPoolTokens(pool_, toDivest) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
+            cached = baseReceived = baseReceived_;
+            fyTokenCached = fyTokenReceived = fyTokenReceived_;
             if (fyTokenReceived > 0) {
-                fyTokenCached = fyTokenReceived;
                 _transition(State.EJECTED, pool_);
                 emit Ejected(address(pool_), toDivest, baseReceived, fyTokenReceived);
             } else {
@@ -344,8 +346,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     /// @dev Burn strategy tokens to withdraw base tokens. It can be called when not invested and not ejected.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function _burnDivested(address baseTo)
-        internal
+    function burnDivested(address baseTo)
+        external
         isState(State.DIVESTED)
         returns (uint256 baseObtained)
     {
