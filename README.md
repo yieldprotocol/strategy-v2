@@ -40,10 +40,10 @@ forge update
 
 ### Test
 
-Compile and test the smart contracts with Forge:
+Strategy migrations can only happen at very specific points in time. The tests are pinned to a specific block and you should make sure that you can access an RPC to fork the Ethereum mainnet. From there, compile and test the smart contracts with Forge:
 
 ```
-forge test
+ALCHEMY_MAINNET_RPC=<your_rpc_here> forge test
 ```
 
 ## Security
