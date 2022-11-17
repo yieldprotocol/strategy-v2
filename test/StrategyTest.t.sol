@@ -191,32 +191,31 @@ contract DivestedStateTest is DivestedState {
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
         assertTrackPlusEq("cached", baseIn, strategy.cached());
     }
-//
-//    function testBurnDivested() public {
-//        console2.log("strategy.burn()");
-//        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-//        assertGt(burnAmount, 0);
-//
-//        // Let's dig some tokens out of the hole
-//        vm.prank(hole);
-//        strategy.transfer(address(strategy), burnAmount);
-//        assertGt(burnAmount, 0);
-//
-//        track("aliceBaseTokens", baseToken.balanceOf(alice));
-//        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(alice, alice, 0);
-//
-//        assertEq(baseObtained, burnAmount);
-//        assertEq(fyTokenObtained, 0);
-//        assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
-//    }
-//
-//    function testNoAuthInvest() public {
-//        console2.log("strategy.invest()");
-//
-//        vm.expectRevert(bytes("Access denied"));
-//        vm.prank(bob);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//    }
+
+    function testBurnDivested() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(address(strategy), burnAmount);
+        assertGt(burnAmount, 0);
+
+        track("aliceBaseTokens", baseToken.balanceOf(alice));
+        uint256 baseObtained = strategy.burnDivested(alice);
+
+        assertEq(baseObtained, burnAmount);
+        assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
+    }
+
+    function testNoAuthInvest() public {
+        console2.log("strategy.invest()");
+
+        vm.expectRevert(bytes("Access denied"));
+        vm.prank(bob);
+        strategy.invest(pool);
+    }
 //
 //    function testInvest() public {
 //        console2.log("strategy.invest()");
