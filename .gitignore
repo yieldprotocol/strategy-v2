@@ -19,6 +19,7 @@ package/
 # Foundry
 artifacts/
 cache/
+lcov.info
 
 # Solidity-coverage
 coverage/
