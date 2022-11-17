@@ -246,102 +246,56 @@ contract DivestedStateTest is DivestedState {
         assertEq(uint256(strategy.maturity()), uint256(pool.maturity()));
         assertEq(address(strategy.pool()), address(pool));
     } // --> InvestedState
-//
-//    function testInvestOnTiltedPool() public {
-//        console2.log("strategy.invest()");
-//
-//        // Tilt the pool
-//        cash(IERC20(address(fyToken)), address(pool), pool.getBaseBalance() / 10);
-//        pool.sellFYToken(hole, 0);
-//
-//        uint256 strategyBaseFunds = baseToken.balanceOf(address(strategy));
-//        assertGt(strategyBaseFunds, 0);
-//
-//        // The Pool mints based on cached values, not actual ones.
-//        uint256 baseInPool = pool.getBaseBalance();
-//        uint256 fyTokenInPool = pool.getFYTokenBalance() - pool.totalSupply();
-//        track("poolBaseBalance", baseInPool);
-//        track("poolFYTokenBalance", fyTokenInPool);
-//        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-//
-//        uint256 baseToPool = DivUp.divUp(strategyBaseFunds * baseInPool, baseInPool + fyTokenInPool);  // Rounds up
-//        uint256 fyTokenToPool = strategyBaseFunds - baseToPool;        // fyTokenToPool is rounded down
-//        uint256 poolMinted = (pool.totalSupply() * fyTokenToPool) / fyTokenInPool;
-//        assertGt(fyTokenToPool, 0);
-//
-//        uint256 poolTotalSupplyBefore = pool.totalSupply();
-//        uint256 poolFYTokenBalanceBefore = pool.getFYTokenBalance() - poolTotalSupplyBefore;
-//
-//        vm.prank(alice);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//
-//        // Base makes it to the pool
-//        assertTrackPlusApproxEqAbs("poolBaseBalance", baseToPool, pool.getBaseBalance(), 100); // We allow some room because Euler conversions might not be perfect
-//        
-//        // FYToken makes it to the pool
-//        assertTrackPlusEq("poolFYTokenBalance", fyTokenToPool, pool.getFYTokenBalance() - pool.totalSupply());
-//        
-//        // The vault balances equal the fyToken added to the pool
-//        DataTypes.Balances memory balances = cauldron.balances(strategy.vaultId());
-//        assertEq(balances.ink, fyTokenToPool);
-//        assertEq(balances.art, fyTokenToPool);
-//        
-//        // Strategy gets the pool increase in total supply
-//        assertTrackPlusEq("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)));
-//    } // --> InvestedTiltedState
 }
-//
-//abstract contract InvestedState is DivestedState {
-//    function setUp() public virtual override {
-//        super.setUp();
-//        vm.prank(alice);
-//        strategy.invest(seriesId, 0, type(uint256).max);
-//    }
-//}
-//
-//contract InvestedStateTest is InvestedState {
-//    function testMintInvested() public {
-//        console2.log("strategy.mint()");
-//        uint256 baseIn = pool.getBaseBalance() / 1000;
-//
-//        track("bobStrategyTokens", strategy.balanceOf(bob));
-//        track("cached", strategy.cached());
-//        track("poolBaseBalance", pool.getBaseBalance());
-//        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-//        uint256 poolMinted = (baseIn * pool.totalSupply()) / pool.getBaseBalance();
-//
-//        cash(baseToken, address(strategy), baseIn);
-//        uint256 minted = strategy.mint(bob, 0, type(uint256).max);
-//
-//        assertEq(minted, baseIn);
-//        assertTrackPlusEq("bobStrategyTokens", baseIn, strategy.balanceOf(bob));
-//        assertTrackPlusEq("cached", baseIn, strategy.cached());
-//        assertTrackPlusApproxEqAbs("poolBaseBalance", baseIn, pool.getBaseBalance(), 100);
-//        assertTrackPlusApproxEqAbs("strategyPoolBalance", poolMinted, pool.balanceOf(address(strategy)), 100);
-//    }
-//
-//    function testBurnInvested() public {
-//        console2.log("strategy.burn()");
-//        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-//        assertGt(burnAmount, 0);
-//
-//        // Let's dig some tokens out of the hole
-//        vm.prank(hole);
-//        strategy.transfer(address(strategy), burnAmount);
-//
-//        track("cached", strategy.cached());
-//        track("bobBaseTokens", baseToken.balanceOf(bob));
-//        track("strategySupply", strategy.totalSupply());
-//        uint256 baseExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
-//
-//        (uint256 baseObtained, uint256 fyTokenObtained) = strategy.burn(bob, bob, 0);
-//
-//        assertEq(fyTokenObtained, 0);
-//        assertTrackMinusEq("strategySupply", burnAmount, strategy.totalSupply());
-//        assertApproxEqAbs(baseExpected, baseObtained, 100);
-//        assertTrackPlusEq("bobBaseTokens", baseObtained, baseToken.balanceOf(bob));
-//        assertTrackMinusApproxEqAbs("cached", baseExpected, strategy.totalSupply(), 100);
-//    }
+
+abstract contract InvestedState is DivestedState {
+    function setUp() public virtual override {
+        super.setUp();
+        vm.prank(alice);
+        strategy.invest(pool);
+    }
+}
+
+contract InvestedStateTest is InvestedState {
+    function testMintInvested() public {
+        console2.log("strategy.mint()");
+        uint256 poolIn = pool.totalSupply() / 1000;
+        assertGt(poolIn, 0);
+
+        track("bobStrategyTokens", strategy.balanceOf(bob));
+        track("cached", strategy.cached());
+        track("strategyPoolBalance", pool.balanceOf(address(strategy)));
+        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.cached();
+
+        cash(pool, address(strategy), poolIn);
+        uint256 minted = strategy.mintInvested(bob);
+
+        assertEq(minted, expected);
+        assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
+        assertTrackPlusEq("cached", poolIn, strategy.cached());
+        assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
+    }
+
+    function testBurnInvested() public {
+        console2.log("strategy.burn()");
+        uint256 burnAmount = strategy.balanceOf(hole) / 2;
+        assertGt(burnAmount, 0);
+
+        // Let's dig some tokens out of the hole
+        vm.prank(hole);
+        strategy.transfer(address(strategy), burnAmount);
+
+        track("cached", strategy.cached());
+        track("bobPoolTokens", pool.balanceOf(bob));
+        track("strategySupply", strategy.totalSupply());
+        uint256 poolExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
+
+        uint256 poolObtained = strategy.burnInvested(bob);
+
+        assertEq(poolObtained, poolExpected);
+        assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
+        assertTrackMinusEq("cached", poolObtained, strategy.cached());
+    }
 //
 //    function testEjectAuth() public {
 //        console2.log("strategy.eject()");
@@ -366,8 +320,8 @@ contract DivestedStateTest is DivestedState {
 //        // State variables are reset
 //        assertEq(address(strategy.pool()), address(0));
 //    } // --> DivestedAndEjectedState
-//}
-//
+}
+
 //abstract contract InvestedTiltedState is DivestedState {
 //    function setUp() public virtual override {
 //        super.setUp();
