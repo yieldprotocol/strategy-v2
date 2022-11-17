@@ -194,7 +194,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Caching
         IPool pool_ =  IPool(ladle.pools(seriesId_));
         IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
-        uint256 cached_ = baseValue; // We could read the real balance, but this is a bit safer
+        uint256 baseValue_ = baseValue; // We could read the real balance, but this is a bit safer
 
         require(base == pool_.base(), "Mismatched base");
 
@@ -208,8 +208,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 baseInPool = pool_.getBaseBalance();
         uint256 fyTokenInPool = pool_.getFYTokenBalance() - pool_.totalSupply();
 
-        uint256 baseToPool = (cached_ * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
-        uint256 fyTokenToPool = cached_ - baseToPool;        // fyTokenToPool is rounded down
+        uint256 baseToPool = (baseValue_ * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
+        uint256 fyTokenToPool = baseValue_ - baseToPool;        // fyTokenToPool is rounded down
 
         // Borrow fyToken with underlying as collateral
         (vaultId,) = ladle.build(seriesId_, baseId, 0);
@@ -230,7 +230,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         maturity = pool_.maturity();
         pool = pool_;
 
-        emit Invested(address(pool_), cached_, lpTokenMinted);
+        emit Invested(address(pool_), baseValue_, lpTokenMinted);
     }
 
     /// @dev Divest out of a pool once it has matured
@@ -290,11 +290,18 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         ladle.pour(vaultId, address(this), -(toRepay).i128(), -(toRepay).i128());
         // There is an edge case in which surplus fyToken from a previous ejection could have been used. Not worth the complexity.
 
+        // Sell fyToken if possible
+        uint256 ejected_ = fyTokenReceived - toRepay;
+        if (ejected_ > 0) {
+            try this._sellFYToken(pool_, fyToken, address(this), ejected_) returns (uint256) { // The pool might not have liquidity for this sale
+                ejected_ = 0;
+            } catch {}
+        }
+
         // Reset the base cache
         baseValue = base.balanceOf(address(this));
 
         // If there are any fyToken left, transition to ejected state
-        uint256 ejected_ = fyTokenReceived - toRepay;
         if (ejected_ > 0) {
             ejected = ejected_;
 
@@ -409,7 +416,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     {
         // Caching
         IPool pool_ = pool;
-        uint256 cached_ = baseValue;
+        uint256 baseValue_ = baseValue;
 
         // minted = supply * value(deposit) / value(strategy)
 
@@ -417,10 +424,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 deposit = base.balanceOf(address(this));
 
         // Update the base cache
-        baseValue = cached_ + deposit;
+        baseValue = baseValue_ + deposit;
 
         // Mint strategy tokens
-        minted = _totalSupply * deposit / cached_;
+        minted = _totalSupply * deposit / baseValue_;
         _mint(to, minted);
 
         // Now, put the funds into the Pool
@@ -450,45 +457,42 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
-        uint256 cached_ = baseValue;
+        uint256 baseValue_ = baseValue;
+        uint256 availableDebt;
         { // Stack too deep
             uint256 totalSupply_ = _totalSupply;
+            uint256 burnt = _balanceOf[address(this)];
+            availableDebt = cauldron.balances(vaultId).art * burnt / totalSupply_;
 
             // Burn strategy tokens
-            uint256 burnt = _balanceOf[address(this)];
             _burn(address(this), burnt);
 
             // Burn lpTokens
             uint256 withdrawal = pool.balanceOf(address(this)) * burnt / totalSupply_;
             pool_.safeTransfer(address(pool_), withdrawal);
-        }
-        (, uint256 baseFromBurn, uint256 fyTokenReceived) = pool_.burn(baseTo, address(this), 0, type(uint256).max);
+            (, baseObtained, fyTokenObtained) = pool_.burn(baseTo, address(this), 0, type(uint256).max);
 
-        // Repay as much debt as possible
-        uint256 debt = cauldron.balances(vaultId).art;
-        uint256 toRepay = debt < fyTokenReceived ? debt : fyTokenReceived;
-        fyToken_.safeTransfer(address(fyToken_), toRepay);
-        ladle.pour(vaultId, address(this), -(toRepay.i128()), -(toRepay.i128()));
+            // Repay as much debt as possible
+            uint256 toRepay = availableDebt < fyTokenObtained ? availableDebt : fyTokenObtained;
+            fyToken_.safeTransfer(address(fyToken_), toRepay);
+            ladle.pour(vaultId, address(this), -(toRepay.i128()), -(toRepay.i128()));
+            fyTokenObtained -= toRepay;
+            baseObtained += toRepay;
+        }
 
         // Sell any fyToken that are left
-        uint256 baseFromSale;
-        uint256 toSell = fyTokenReceived - toRepay;
-        if (toSell > 0) {
-            fyToken_.safeTransfer(address(pool_), toSell);
-            try pool_.sellFYToken(baseTo, 0) returns (uint128 baseFromSale_) { // The pool might not have liquidity for this sale
-                baseFromSale = baseFromSale_;
+        if (fyTokenObtained > 0) {
+            try this._sellFYToken(pool_, fyToken_, baseTo, fyTokenObtained) returns (uint256 baseFromSale) { // The pool might not have liquidity for this sale
+                baseObtained += baseFromSale;
             } catch {
-                fyToken_.safeTransfer(fyTokenTo, fyTokenObtained = toSell);
+                fyToken_.safeTransfer(fyTokenTo, fyTokenObtained);
             }
         }
 
         // Update cached base
-        console2.log(cached_);
-        console2.log(baseFromBurn + fyTokenReceived);
-        baseValue = cached_ - baseFromBurn - toRepay - baseFromSale - fyTokenObtained; // TODO: If we get fyTokenObtained, it's value must be less than 1:1
-
-        // Function return
-        baseObtained = baseFromBurn + toRepay + baseFromSale;
+        console2.log(baseValue_);
+        console2.log(baseObtained + fyTokenObtained);
+        baseValue = baseValue_ - baseObtained - fyTokenObtained; // TODO: Valuing fyToken at 1:1 is wrong, and this can take baseValue below zero
 
         // Slippage
         require (baseObtained >= minBaseReceived, "Not enough base obtained");
@@ -502,11 +506,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
-        uint256 cached_ = baseValue;
-        uint256 deposit = base.balanceOf(address(this)) - cached_;
-        baseValue = cached_ + deposit;
+        uint256 baseValue_ = baseValue;
+        uint256 deposit = base.balanceOf(address(this)) - baseValue_;
+        baseValue = baseValue_ + deposit;
 
-        minted = _totalSupply * deposit / (cached_ + ejected); // We value ejected fyToken at 1:1
+        minted = _totalSupply * deposit / (baseValue_ + ejected); // We value ejected fyToken at 1:1
 
         _mint(to, minted);
     }
@@ -520,10 +524,10 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         // strategy * burnt/supply = withdrawal
-        uint256 cached_ = baseValue;
+        uint256 baseValue_ = baseValue;
         uint256 totalSupply_ = _totalSupply;
         uint256 burnt = _balanceOf[address(this)];
-        baseObtained = cached_ * burnt / _totalSupply;
+        baseObtained = baseValue_ * burnt / _totalSupply;
         baseValue -= baseObtained; // TODO: Are we certain we don't leak value after `divest` or `eject`?
 
         _burn(address(this), burnt);
@@ -550,5 +554,22 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
             emit Divested(address(0), 0, 0); // Signalling the transition from Ejected to Divested
         }
+    }
+
+    /// @dev Sell an amount of fyToken.
+    /// @notice Only the Strategy itself can call this function. It is external and exists so that the transfer is reverted if the burn also reverts.
+    /// @param pool_ Pool for the pool tokens.
+    /// @param fyToken_ FYToken to sell.
+    /// @param fyTokenAmount Amount of fyToken to sell.
+    /// @return baseObtained Amount of base tokens obtained from sale of fyToken
+    function _sellFYToken(IPool pool_, IFYToken fyToken_, address to, uint256 fyTokenAmount)
+        external
+        returns (uint256 baseObtained)
+    {
+        require (msg.sender ==  address(this), "Unauthorized");
+
+        // Burn lpTokens
+        fyToken_.safeTransfer(address(pool_), fyTokenAmount);
+        baseObtained = pool_.sellFYToken(to, 0); // TODO: Slippage
     }
 }
