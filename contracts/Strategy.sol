@@ -294,7 +294,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     /// @param to Recipient for the strategy tokens
     /// @return minted Amount of strategy tokens minted
     /// @notice The pool tokens that the user contributes need to have been transferred previously, using a batchable router.
-    function mintInvested(address to)
+    function mint(address to)
         external
         isState(State.INVESTED)
         returns (uint256 minted)
@@ -320,7 +320,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     /// @param to Recipient for the pool tokens
     /// @return poolTokensObtained Amount of pool tokens obtained
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnInvested(address to)
+    function burn(address to)
         external
         isState(State.INVESTED)
         returns (uint256 poolTokensObtained)

@@ -289,7 +289,7 @@ abstract contract InvestedState is DivestedState {
 }
 
 contract InvestedStateTest is InvestedState {
-    function testMintInvested() public {
+    function testmint() public {
         console2.log("strategy.mint()");
         uint256 poolIn = pool.totalSupply() / 1000;
         assertGt(poolIn, 0);
@@ -300,7 +300,7 @@ contract InvestedStateTest is InvestedState {
         uint256 expected = (poolIn * strategy.totalSupply()) / strategy.cached();
 
         cash(pool, address(strategy), poolIn);
-        uint256 minted = strategy.mintInvested(bob);
+        uint256 minted = strategy.mint(bob);
 
         assertEq(minted, expected);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
@@ -308,7 +308,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
-    function testBurnInvested() public {
+    function testburn() public {
         console2.log("strategy.burn()");
         uint256 burnAmount = strategy.balanceOf(hole) / 2;
         assertGt(burnAmount, 0);
@@ -322,7 +322,7 @@ contract InvestedStateTest is InvestedState {
         track("strategySupply", strategy.totalSupply());
         uint256 poolExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
 
-        uint256 poolObtained = strategy.burnInvested(bob);
+        uint256 poolObtained = strategy.burn(bob);
 
         assertEq(poolObtained, poolExpected);
         assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
@@ -573,8 +573,8 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 //   burnDivested ✓
 //   invest -> Invested ✓
 // Invested
-//   mintInvested ✓
-//   burnInvested ✓
+//   mint ✓
+//   burn ✓
 //   eject -> Divested ✓
 //   time passes -> InvestedAfterMaturity ✓
 //   sell fyToken into pool -> InvestedTilted ✓

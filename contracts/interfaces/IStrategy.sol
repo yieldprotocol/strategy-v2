@@ -68,13 +68,13 @@ interface IStrategy is IStrategyMigrator {
 
     /// @dev Mint strategy tokens with pool tokens. It can be called only when invested.
     /// @notice The pool tokens that the user contributes need to have been transferred previously, using a batchable router.
-    function mintInvested(address to)
+    function mint(address to)
         external
         returns (uint256 minted);
 
     /// @dev Burn strategy tokens to withdraw pool tokens. It can be called only when invested.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnInvested(address to)
+    function burn(address to)
         external
         returns (uint256 poolTokensObtained);
 
