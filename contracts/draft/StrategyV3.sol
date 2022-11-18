@@ -41,6 +41,8 @@ library DivUp {
 /// divest: Only while invested on a mature pool. Pull all funds from the pool. Become divested.
 /// eject: Only while invested on a non-mature pool. Pull all funds from the pool. Become divested.
 contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
+    enum State {DEPLOYED, DIVESTED, INVESTED, EJECTED, DRAINED}
+
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using MinimalTransferHelper for IFYToken;
@@ -57,6 +59,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     event SoldEjected(bytes6 indexed seriesId, uint256 soldFYToken, uint256 returnedBase);
 
     // TODO: Global variables can be packed
+
+    State public state;                          // The state determines which functions are available
 
     ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
     ICauldron public immutable cauldron;         // Accounts in the Yield v2 Collateralized Debt Engine
@@ -92,43 +96,41 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         _grantRole(StrategyV3.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
 
-    modifier invested() {
+    modifier isState(State target) {
         require (
-            address(pool) != address(0),
-            "Not invested"
+            target == state,
+            "Not allowed in this state"
         );
         _;
     }
 
-    modifier divested() {
-        require (
-            address(pool) == address(0),
-            "Not divested"
-        );
-        _;
-    }
-
-    modifier isEjected() {
-        require (
-            ejected > 0,
-            "Not ejected"
-        );
-        _;
-    }
-
-    modifier notEjected() {
-        require (
-            ejected == 0,
-            "Is ejected"
-        );
-        _;
+    /// @dev State and state variable management
+    /// @param target State to transition to
+    /// @param pool_ If transitioning to invested, update pool state variable with this parameter
+    function _transition(State target, IPool pool_) internal {
+        if (target == State.INVESTED) {
+            // pool = pool_;
+            // fyToken = IFYToken(address(pool_.fyToken()));
+            // maturity = pool_.maturity();
+        } else if (target == State.DIVESTED) {
+            // delete fyToken;
+            // delete maturity;
+            // delete pool;
+        } else if (target == State.EJECTED) {
+            // delete maturity;
+            // delete pool;
+        } else if (target == State.DRAINED) {
+            // delete maturity;
+            // delete pool;
+        }
+        state = target;
     }
 
     /// @dev Set a new Ladle
     /// @notice Use with extreme caution, only for Ladle replacements
     function setLadle(ILadle ladle_)
         external
-        divested
+        isState(State.DIVESTED)
         auth
     {
         ladle = ladle_;
@@ -139,7 +141,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @notice Use with extreme caution, only for Join replacements
     function resetTokenJoin()
         external
-        divested
+        isState(State.DIVESTED)
         auth
     {
         baseJoin = address(ladle.joins(baseId));
@@ -152,6 +154,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     function mint(address, address, uint256, uint256)
         external
         override
+        isState(State.DEPLOYED)
         auth
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
@@ -162,6 +165,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @dev Mint the first strategy tokens, without investing
     function init(address to)
         external
+        isState(State.DEPLOYED)
         auth
         returns (uint256 minted)
     {
@@ -177,6 +181,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         require (minted > 0, "Not enough base in");
         // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
         _mint(to, minted);
+
+        _transition(State.DIVESTED, IPool(address(0)));
     }
 
     /// @dev Start the strategy investments in the next pool
@@ -186,8 +192,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     function invest(bytes6 seriesId_, uint256 minRatio, uint256 maxRatio)
         external
         auth
-        divested
-        notEjected
+        isState(State.DIVESTED)
         returns (uint256 poolValue)
     {
         require (_totalSupply > 0, "Init Strategy first");
@@ -234,13 +239,15 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         maturity = pool_.maturity();
         pool = pool_;
 
+        _transition(State.INVESTED, IPool(pool_));
+
         emit Invested(address(pool_), baseValue, poolValue);
     }
 
     /// @dev Divest out of a pool once it has matured
     function divest()
         external
-        invested
+        isState(State.INVESTED)
     {
         // Caching
         IPool pool_ = pool;
@@ -266,6 +273,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         delete pool;
         delete vaultId;
 
+        _transition(State.DIVESTED, IPool(address(0)));
+
         emit Divested(address(pool_), toDivest, baseFromBurn + baseFromRedeem);
     }
 
@@ -275,7 +284,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     function eject(uint256 minRatio, uint256 maxRatio)
         external
         auth
-        invested
+        isState(State.INVESTED)
     {
         // Caching
         IPool pool_ = pool;
@@ -311,6 +320,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
             delete pool;
 
+            _transition(State.EJECTED, IPool(address(0)));
+
             emit Ejected(address(pool_), toDivest, baseReceived + toRepay, ejected_);
         } else { // Otherwise, transition to divested state
             delete seriesId;
@@ -318,6 +329,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
             delete maturity;
             delete pool;
             delete vaultId;
+
+            _transition(State.DIVESTED, IPool(address(0)));
 
             emit Divested(address(pool_), toDivest, baseReceived + toRepay);
         }
@@ -331,8 +344,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @return soldFYToken Amount of fyToken sold.
     function buyEjected(address fyTokenTo, address baseTo)
         external
-        divested
-        isEjected
+        isState(State.EJECTED)
         returns (uint256 soldFYToken, uint256 returnedBase)
     {
         // Caching
@@ -351,6 +363,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
             delete maturity;
             delete vaultId; // We either burned all the fyToken, or there is no debt left.
 
+            _transition(State.DIVESTED, IPool(address(0)));
             // There shouldn't be a reason to update the base cache
         }
 
@@ -367,9 +380,9 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
     /// @dev Mint strategy tokens while invested in a pool.
     /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
-    function mintInvested(address to, uint256 minRatio, uint256 maxRatio)
+    function mint(address to, uint256 minRatio, uint256 maxRatio)
         external
-        invested
+        isState(State.INVESTED)
         returns (uint256 minted)
     {
         // Caching
@@ -407,9 +420,9 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @dev Burn strategy tokens to withdraw base tokens.
     /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnInvested(address baseTo, address fyTokenTo, uint256 minBaseReceived)
+    function burn(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         external
-        invested
+        isState(State.INVESTED)
         returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         // Caching
@@ -459,7 +472,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
     function mintDivested(address to)
         external
-        divested
+        isState(State.DIVESTED)
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
@@ -477,7 +490,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burnDivested(address baseTo, address ejectedFYTokenTo)
         external
-        divested
+        isState(State.DIVESTED)
         returns (uint256 baseObtained, uint256 fyTokenObtained)
     {
         // strategy * burnt/supply = poolTokensBurnt
