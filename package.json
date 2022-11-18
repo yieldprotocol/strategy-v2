@@ -6,7 +6,8 @@
   "files": [
     "contracts/*.sol",
     "contracts/**/*.sol",
-    "!contracts/deprecated/*.sol"
+    "!contracts/deprecated/*.sol",
+    "!contracts/draft/*.sol"
   ],
   "scripts": {
     "forge:build": "forge build",
