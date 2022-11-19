@@ -90,8 +90,9 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         fyToken = fyToken_;
 
         base = IERC20(fyToken_.underlying());
-        baseId = fyToken_.underlyingId();
-        baseJoin = address(ladle_.joins(baseId));
+        bytes6 baseId_;
+        baseId = baseId_ = fyToken_.underlyingId();
+        baseJoin = address(ladle_.joins(baseId_));
 
         _grantRole(StrategyV3.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
@@ -160,6 +161,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     // ----------------------- STATE CHANGES --------------------------- //
 
     /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
+    /// @return minted The amount of strategy tokens created.
     function mint(address, address, uint256, uint256)
         external
         override
@@ -171,7 +173,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         fyTokenIn = 0;
     }
 
-    /// @dev Mint the first strategy tokens, without investing
+    /// @dev Mint the first strategy tokens, without investing.
+    /// @param to Receiver of the strategy tokens.
     function init(address to)
         external
         isState(State.DEPLOYED)
@@ -194,9 +197,11 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         _transition(State.DIVESTED, bytes12(0));
     }
 
-    /// @dev Start the strategy investments in the next pool
+    /// @dev Invest the strategy funds in a pool. Only when divested. Only for pools with no fyToken.
+    /// @param seriesId_ SeriesId for the pool the strategy should invest into.
     /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
     /// @param maxRatio Maximum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
+    /// @param poolValue Amount of pool tokens obtained, which is now the value in pool terms of the strategy.
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
     function invest(bytes6 seriesId_, uint256 minRatio, uint256 maxRatio)
         external
@@ -246,10 +251,12 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         emit Invested(address(pool_), baseValue, poolValue);
     }
 
-    /// @dev Divest out of a pool once it has matured
+    /// @dev Divest out of a pool once it has matured. Only when invested and matured.
+    /// @param baseValue Amount of base tokens obtained, which is now the value in base terms of the strategy.
     function divest()
         external
         isState(State.INVESTED)
+        returns (uint256 baseValue)
     {
         // Caching
         IPool pool_ = pool;
@@ -266,7 +273,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
 
         // Reset the value cache
-        value = base.balanceOf(address(this));
+        value = baseValue = base.balanceOf(address(this));
 
         _transition(State.DIVESTED, bytes12(0));
 
@@ -274,20 +281,22 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     }
 
     /// @dev Divest out of a pool at any time. The obtained fyToken will be used to repay debt.
-    /// Any surplus will be kept in the contract until maturity, at which point `redeemEjected`
-    /// should be called.
+    /// Any remaining fyToken will be sold if possible. Further remaining fyToken will be available to
+    /// be bought at face value. If the strategy held pool tokens can't be burnt, they will be sent to msg.sender.
+    /// Only when invested. Can lead to divested, ejected, or drained states.
+    /// @return baseReceived The amount of base tokens obtained by burning pool tokens and swapping fyToken.
+    /// @return fyTokenReceived The amount of fyTokens obtained by burning pool tokens and that couldn't be swapped for base.
     function eject()
         external
         auth
         isState(State.INVESTED)
+        returns (uint256 baseReceived, uint256 fyTokenReceived)
     {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
 
         uint256 poolBalance = pool_.balanceOf(address(this));
-        uint256 baseReceived;
-        uint256 fyTokenReceived;
 
         // Burn lpTokens, if not possible, eject the pool tokens out. Slippage should be managed by the caller.
         try this._burnPoolTokens(pool_, poolBalance) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
@@ -330,7 +339,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
     // ----------------------- EJECTED FYTOKEN --------------------------- //
 
-    /// @dev Buy ejected fyToken in the strategy at face value
+    /// @dev Buy ejected fyToken in the strategy at face value. Only when ejected.
     /// @param fyTokenTo Address to send the purchased fyToken to.
     /// @param baseTo Address to send any remaining base to.
     /// @return soldFYToken Amount of fyToken sold.
@@ -361,7 +370,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         emit SoldEjected(seriesId, soldFYToken, returnedBase);
     }
 
-    /// @dev If we ejected the pool tokens, we can recapitalize the strategy to avoid a forced migration
+    /// @dev If we ejected the pool tokens, we can recapitalize the strategy to avoid a forced migration. Only when drained.
     /// @return baseIn Amount of base tokens used to restart
     function restart()
         external
@@ -376,7 +385,11 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
     // ----------------------- MINT & BURN --------------------------- //
 
-    /// @dev Mint strategy tokens while invested in a pool.
+    /// @dev Mint strategy tokens while invested in a pool. Only when invested.
+    /// @param to Receiver for the strategy tokens.
+    /// @param minRatio Minimum ratio of base to fyToken accepted in the pool.
+    /// @param maxRatio Maximum ratio of base to fyToken accepted in the pool.
+    /// @return minted The amount of strategy tokens created.
     /// @notice The base tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to, uint256 minRatio, uint256 maxRatio)
         external
@@ -415,8 +428,12 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw base tokens.
-    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
+    /// @dev Burn strategy tokens to withdraw base tokens. Only when invested.
+    /// @param baseTo Receiver for the base obtained.
+    /// @param fyTokenTo Receiver for the fyToken obtained, if any.
+    /// @param minBaseReceived Minimum amount of base to be accepted.
+    /// @return baseObtained The amount of base tokens obtained by burning strategy tokens.
+    /// @return fyTokenObtained The amount of fyToken obtained by burning strategy tokens.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
     function burn(address baseTo, address fyTokenTo, uint256 minBaseReceived)
         external
@@ -466,7 +483,9 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         require (baseObtained >= minBaseReceived, "Not enough base obtained");
     }
 
-    /// @dev Mint strategy tokens with base tokens. It can be called only when not invested.
+    /// @dev Mint strategy tokens with base tokens. Only when divested.
+    /// @param to Receiver for the strategy tokens obtained.
+    /// @return minted The amount of strategy tokens created.
     /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
     function mintDivested(address to)
         external
@@ -483,10 +502,11 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw base tokens. It can be called when not invested.
-    /// @notice If the strategy ejected from a previous investment, some fyToken might be received.
+    /// @dev Burn strategy tokens to withdraw base tokens. Only when divested.
+    /// @param to Receiver for the base obtained.
+    /// @return baseObtained The amount of base tokens obtained by burning strategy tokens.
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnDivested(address baseTo)
+    function burnDivested(address to)
         external
         isState(State.DIVESTED)
         returns (uint256 baseObtained)
@@ -498,7 +518,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         value -= baseObtained; // TODO: Are we certain we don't leak value after `divest` or `eject`?
 
         _burn(address(this), burnt);
-        base.safeTransfer(baseTo, baseObtained);
+        base.safeTransfer(to, baseObtained);
     }
 
     /// @dev Sell an amount of fyToken.
