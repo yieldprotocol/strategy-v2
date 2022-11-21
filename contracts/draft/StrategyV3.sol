@@ -76,8 +76,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     uint256 public value;                        // While divested, base tokens owned by the strategy. While invested, pool tokens owned by the strategy.
     uint256 public ejected;                      // In emergencies, the strategy can keep fyToken
 
-    constructor(string memory name, string memory symbol, uint8 decimals, ILadle ladle_, IFYToken fyToken_)
-        ERC20Rewards(name, symbol, decimals)
+    constructor(string memory name, string memory symbol, ILadle ladle_, IFYToken fyToken_)
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(fyToken_)))
         StrategyMigrator(
             IERC20(fyToken_.underlying()),
             fyToken_)
@@ -161,7 +161,6 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     // ----------------------- STATE CHANGES --------------------------- //
 
     /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
-    /// @return minted The amount of strategy tokens created.
     function mint(address, address, uint256, uint256)
         external
         override

@@ -102,7 +102,7 @@ abstract contract DeployedState is Test {
         sharesToken = pool.sharesToken();
 
         // Strategy V2
-        strategy = new Strategy("StrategyTest.t.sol", "test", baseToken.decimals(), fyToken);
+        strategy = new Strategy("StrategyTest.t.sol", "test", fyToken);
 
         // The strategy needs to be given permission to initalize the pool
         // vm.prank(timelock);

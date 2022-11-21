@@ -58,7 +58,7 @@ abstract contract ZeroState is Test {
         baseToken = srcPool.baseToken();
         sharesToken = srcPool.sharesToken();
 
-        dstStrategy = new Strategy("", "", baseToken.decimals(), dstFYToken);
+        dstStrategy = new Strategy("", "", dstFYToken);
 
         dstStrategy.grantRole(StrategyMigrator.mint.selector, address(srcStrategy));
 

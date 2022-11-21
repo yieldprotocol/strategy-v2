@@ -42,8 +42,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     uint256 public cached;                       // While divested, base tokens held by the strategy; while invested, pool tokens held by the strategy
     uint256 public fyTokenCached;                // In emergencies, the strategy can keep fyToken
 
-    constructor(string memory name, string memory symbol, uint8 decimals, IFYToken fyToken_)
-        ERC20Rewards(name, symbol, decimals)
+    constructor(string memory name, string memory symbol, IFYToken fyToken_)
+        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(fyToken_)))
         StrategyMigrator(
             IERC20(fyToken_.underlying()),
             fyToken_)
