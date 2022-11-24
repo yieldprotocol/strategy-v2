@@ -12,6 +12,7 @@ import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
+/// @dev This test harness tests that a deployed and invested strategy is functional.
 
 abstract contract ZeroState is Test {
     using stdStorage for StdStorage;
