@@ -33,11 +33,11 @@ abstract contract ZeroState is Test {
 //    address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
 //    ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
 //    ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    Strategy strategy = Strategy(0xf08A7beC87Ab90D84A75e9d70e0734047d8f2B0D); // From https://dashboard.tenderly.co/Yield/v2/fork/f33e0466-9ad7-4274-bc11-8aa09179ea80
+    Strategy strategy = Strategy(0x8e79F205960da611Fe3cb6D474b3Ec1C1B72Da39);
 
-//       "YSETH6MJD", "0xf08A7beC87Ab90D84A75e9d70e0734047d8f2B0D"
-//       "YSDAI6MJD", "0x09AA830457D403538fbb86EAe5b85E7BFa48D847"
-//       "YSUSDC6MJD", "0x30CB3B5C05040C657451b78d4966CDAd6b9370b0"
+//       "YSETH6MJD", "0x8e79F205960da611Fe3cb6D474b3Ec1C1B72Da39"
+//       "YSDAI6MJD", "0xef6Bd5EBf6CBB631d32f7C5b6D60E197afbc9C38"
+//       "YSUSDC6MJD", "0x13Ba156CbeE7b9e0FC9AEE8310E8b26DDC93392f"
 
     IPool pool;
     IFYToken fyToken;
@@ -225,6 +225,8 @@ contract InvestedStateTest is InvestedState {
         cash(pool, address(strategy), poolIn);
         uint256 minted = strategy.mint(bob);
         uint256 burnAmount = minted / 2;
+        vm.prank(bob);
+        strategy.transfer(address(strategy), burnAmount);
 
         track("cached", strategy.cached());
         track("bobPoolTokens", pool.balanceOf(bob));
@@ -362,7 +364,6 @@ contract InvestedAfterMaturityTest is InvestedAfterMaturity {
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
         uint256 expectedFYToken =
             pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
-        assertGt(expectedFYToken, 0);
 
         strategy.divest();
 
