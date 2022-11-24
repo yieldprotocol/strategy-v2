@@ -149,6 +149,8 @@ abstract contract ZeroState is Test {
     function setUp() public virtual {
         vm.createSelectFork(network);
 
+        baseToken = IERC20Metadata(address(strategy.base()));
+
         // Alice has privileged roles
         vm.startPrank(timelock);
         strategy.grantRole(Strategy.init.selector, alice);
@@ -165,6 +167,12 @@ abstract contract ZeroState is Test {
     }
 }
 
+contract ZeroStateTest is ZeroState {
+    function testHarnessIsInvested() public {
+        assertTrue(isInvested());
+    } 
+}
+
 abstract contract InvestedState is ZeroState {
 
     function setUp() public virtual override {
@@ -177,7 +185,6 @@ abstract contract InvestedState is ZeroState {
 
         fyToken = strategy.fyToken();
         pool = strategy.pool();
-        baseToken = pool.baseToken();
         sharesToken = pool.sharesToken();
 
         vm.label(address(pool), "pool");
@@ -259,7 +266,7 @@ contract InvestedStateTest is InvestedState {
 
 abstract contract EjectedOrDrainedState is InvestedState {
     
-    function setUp() public onlyInvested virtual override {
+    function setUp() public virtual override {
         super.setUp();
 
         if (!isInvested()) {
@@ -404,18 +411,23 @@ contract DivestedStateTest is DivestedState {
 
     function testHarnessBurnDivested() public onlyDivested {
         console2.log("strategy.burn()");
-        uint256 burnAmount = strategy.balanceOf(hole) / 2;
-        assertGt(burnAmount, 0);
+        // Let's get some tokens
+        uint256 baseIn = strategy.cached() / 1000;
+        cash(baseToken, address(strategy), baseIn);
+        uint256 minted = strategy.mintDivested(bob);
 
-        // Let's dig some tokens out of the hole
-        vm.prank(hole);
+        uint256 burnAmount = minted / 2;
+        vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
+        uint256 expectedBaseObtained = burnAmount * strategy.cached() / strategy.totalSupply();
         assertGt(burnAmount, 0);
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));
+
+        // Burn, baby, burn
         uint256 baseObtained = strategy.burnDivested(alice);
 
-        assertEq(baseObtained, burnAmount);
+        assertEq(baseObtained, expectedBaseObtained);
         assertTrackPlusEq("aliceBaseTokens", baseObtained, baseToken.balanceOf(alice));
     }
 }
