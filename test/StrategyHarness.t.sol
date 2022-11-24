@@ -24,21 +24,11 @@ abstract contract ZeroState is Test {
 
     string network = "tenderly";
 
-    // Arbitrum
-    address timelock = 0xd0a22827Aed2eF5198EbEc0093EA33A4CD641b6c;
-    ICauldron cauldron = ICauldron(0x23cc87FBEBDD67ccE167Fa9Ec6Ad3b7fE3892E30);
-    ILadle ladle = ILadle(0x16E25cf364CeCC305590128335B8f327975d0560);
+    address timelock;
+    ICauldron cauldron;
+    ILadle ladle;
 
-//    // Mainnet
-//    address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
-//    ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
-//    ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    Strategy strategy = Strategy(0x13Ba156CbeE7b9e0FC9AEE8310E8b26DDC93392f);
-
-//       "YSETH6MJD", "0x8e79F205960da611Fe3cb6D474b3Ec1C1B72Da39"
-//       "YSDAI6MJD", "0xef6Bd5EBf6CBB631d32f7C5b6D60E197afbc9C38"
-//       "YSUSDC6MJD", "0x13Ba156CbeE7b9e0FC9AEE8310E8b26DDC93392f"
-
+    Strategy strategy;
     IPool pool;
     IFYToken fyToken;
     IERC20Metadata baseToken;
@@ -103,9 +93,24 @@ abstract contract ZeroState is Test {
         _;
     }
 
+    function equal(string memory a, string memory b) public returns(bool) {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
+    }
+
     function setUp() public virtual {
         vm.createSelectFork(network);
 
+        if (equal(vm.envString("NETWORK"), "MAINNET")) {
+            timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
+            cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
+            ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
+        } else if (equal(vm.envString("NETWORK"), "ARBITRUM")) {
+            timelock = 0xd0a22827Aed2eF5198EbEc0093EA33A4CD641b6c;
+            cauldron = ICauldron(0x23cc87FBEBDD67ccE167Fa9Ec6Ad3b7fE3892E30);
+            ladle = ILadle(0x16E25cf364CeCC305590128335B8f327975d0560);
+        }
+
+        strategy = Strategy(vm.envAddress("STRATEGY"));
         baseToken = IERC20Metadata(address(strategy.base()));
 
         // Alice has privileged roles
