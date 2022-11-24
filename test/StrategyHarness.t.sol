@@ -33,7 +33,7 @@ abstract contract ZeroState is Test {
 //    address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
 //    ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
 //    ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    Strategy strategy = Strategy(0x8e79F205960da611Fe3cb6D474b3Ec1C1B72Da39);
+    Strategy strategy = Strategy(0x13Ba156CbeE7b9e0FC9AEE8310E8b26DDC93392f);
 
 //       "YSETH6MJD", "0x8e79F205960da611Fe3cb6D474b3Ec1C1B72Da39"
 //       "YSDAI6MJD", "0xef6Bd5EBf6CBB631d32f7C5b6D60E197afbc9C38"
@@ -86,52 +86,8 @@ abstract contract ZeroState is Test {
         assertApproxEqAbs(tracked[id] - minus, amount, delta);
     }
 
-    function isDivested() public returns (bool) {
-        return strategy.state() == Strategy.State.DIVESTED;
-    }
-    
-    function isInvested() public returns (bool) {
-        return strategy.state() == Strategy.State.INVESTED;
-    }
-
-    function isInvestedAfterMaturity() public returns (bool) {
-        return strategy.state() == Strategy.State.INVESTED && block.timestamp >= pool.maturity();
-    }
-
-    function isEjected() public returns (bool) {
-        return strategy.state() == Strategy.State.EJECTED;
-    }
-
-    function isDrained() public returns (bool) {
-        return strategy.state() == Strategy.State.DRAINED;
-    }
-
-    modifier onlyDivested() {
-        if (!isDivested()) {
-            console2.log("Strategy not divested, skipping...");
-            return;
-        }
-        _;
-    }
-
-    modifier onlyInvested() {
-        if (!isInvested()) {
-            console2.log("Strategy not invested, skipping...");
-            return;
-        }
-        _;
-    }
-
-    modifier onlyInvestedAfterMaturity() {
-        if (!isInvestedAfterMaturity()) {
-            console2.log("Strategy not invested after maturity, skipping...");
-            return;
-        }
-        _;
-    }
-
     modifier onlyEjected() {
-        if (!isEjected()) {
+        if (strategy.state() != Strategy.State.EJECTED) {
             console2.log("Strategy not ejected, skipping...");
             return;
         }
@@ -140,7 +96,7 @@ abstract contract ZeroState is Test {
 
 
     modifier onlyDrained() {
-        if (!isDrained()) {
+        if (strategy.state() != Strategy.State.DRAINED) {
             console2.log("Strategy not drained, skipping...");
             return;
         }
@@ -170,7 +126,7 @@ abstract contract ZeroState is Test {
 
 contract ZeroStateTest is ZeroState {
     function testHarnessIsInvested() public {
-        assertTrue(isInvested());
+        assertTrue(strategy.state() == Strategy.State.INVESTED);
     } 
 }
 
@@ -178,11 +134,6 @@ abstract contract InvestedState is ZeroState {
 
     function setUp() public virtual override {
         super.setUp();
-
-        if (!isInvested()) {
-            console2.log("Strategy not invested, skipping...");
-            return;
-        }
 
         fyToken = strategy.fyToken();
         pool = strategy.pool();
@@ -198,7 +149,7 @@ abstract contract InvestedState is ZeroState {
 
 contract InvestedStateTest is InvestedState {
 
-    function testHarnessMintInvested() public onlyInvested {
+    function testHarnessMintInvested() public {
         console2.log("strategy.mint()");
 
         uint256 poolIn = pool.totalSupply() / 1000;
@@ -218,7 +169,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
-    function testHarnessBurnInvested() public onlyInvested {
+    function testHarnessBurnInvested() public {
         console2.log("strategy.burn()");
 
         uint256 poolIn = pool.totalSupply() / 1000;
@@ -240,7 +191,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackMinusEq("cached", poolObtained, strategy.cached());
     }
 
-    function testHarnessEjectAuthInvested() public onlyInvested {
+    function testHarnessEjectAuthInvested() public {
         console2.log("strategy.eject()");
 
         vm.expectRevert(bytes("Access denied"));
@@ -248,7 +199,7 @@ contract InvestedStateTest is InvestedState {
         strategy.eject();
     }
 
-    function testHarnessEjectInvested() public onlyInvested {
+    function testHarnessEjectInvested() public {
         console2.log("strategy.eject()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
@@ -259,7 +210,7 @@ contract InvestedStateTest is InvestedState {
         assertTrue(strategy.state() == Strategy.State.DIVESTED ||strategy.state() == Strategy.State.EJECTED || strategy.state() == Strategy.State.DRAINED);
     } // --> Divested, Ejected or Drained
 
-    function testHarnessNoDivestBeforeMaturityInvested() public onlyInvested {
+    function testHarnessNoDivestBeforeMaturityInvested() public {
         console2.log("strategy.divest()");
 
         vm.expectRevert(bytes("Only after maturity"));
@@ -271,11 +222,6 @@ abstract contract EjectedOrDrainedState is InvestedState {
     
     function setUp() public virtual override {
         super.setUp();
-
-        if (!isInvested()) {
-            console2.log("Strategy not invested, skipping...");
-            return;
-        }
 
         vm.prank(alice);
         strategy.eject();
@@ -348,17 +294,12 @@ abstract contract InvestedAfterMaturity is InvestedState {
     function setUp() public virtual override {
         super.setUp();
 
-        if (!isInvested()) {
-            console2.log("Strategy not invested, skipping...");
-            return;
-        }
-
         vm.warp(pool.maturity());
     }
 }
 
 contract InvestedAfterMaturityTest is InvestedAfterMaturity {
-    function testHarnessDivestAfterMaturity() public onlyInvestedAfterMaturity {
+    function testHarnessDivestAfterMaturity() public {
         console2.log("strategy.divest()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
@@ -377,16 +318,12 @@ abstract contract DivestedState is InvestedAfterMaturity {
 
     function setUp() public virtual override {
         super.setUp();
-        if (!isInvestedAfterMaturity()) {
-            console2.log("Strategy not invested after maturity, skipping...");
-            return;
-        }
 
         strategy.divest();
     }
 }
 contract DivestedStateTest is DivestedState {
-    function testHarnessNoRepeatedInit() public onlyDivested {
+    function testHarnessNoRepeatedInit() public {
         console2.log("strategy.init()");
         uint256 initAmount = 1e18;
 
@@ -395,7 +332,7 @@ contract DivestedStateTest is DivestedState {
         strategy.init(hole);
     }
 
-    function testHarnessMintDivested() public onlyDivested {
+    function testHarnessMintDivested() public {
         console2.log("strategy.mint()");
         uint256 baseIn = strategy.cached() / 1000;
         uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cached();
@@ -411,7 +348,7 @@ contract DivestedStateTest is DivestedState {
         assertTrackPlusEq("cached", baseIn, strategy.cached());
     }
 
-    function testHarnessBurnDivested() public onlyDivested {
+    function testHarnessBurnDivested() public {
         console2.log("strategy.burn()");
         // Let's get some tokens
         uint256 baseIn = strategy.cached() / 1000;
