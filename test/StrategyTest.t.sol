@@ -10,6 +10,7 @@ import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.s
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import { TestConstants } from "./utils/TestConstants.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
 interface DonorStrategy {
@@ -17,7 +18,7 @@ interface DonorStrategy {
     function pool() external view returns (IPool);
 }
 
-abstract contract DeployedState is Test {
+abstract contract DeployedState is Test, TestConstants {
     using stdStorage for StdStorage;
 
     // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
@@ -93,7 +94,7 @@ abstract contract DeployedState is Test {
     }
 
     function setUp() public virtual {
-        vm.createSelectFork("mainnet", 15741300);
+        vm.createSelectFork(MAINNET, 15741300);
 
         seriesId = donorStrategy.seriesId();
         pool = donorStrategy.pool();

@@ -8,8 +8,9 @@ import "../contracts/deprecated/IStrategyV1.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import { TestConstants } from "./utils/TestConstants.sol";
 
-abstract contract ZeroState is Test {
+abstract contract ZeroState is Test, TestConstants {
     using stdStorage for StdStorage;
 
     // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
@@ -45,7 +46,7 @@ abstract contract ZeroState is Test {
     Strategy dstStrategy;
 
     function setUp() public virtual {
-        vm.createSelectFork('mainnet', 15741300);
+        vm.createSelectFork(MAINNET, 15741300);
 
         srcSeriesId = srcStrategy.seriesId();
         srcPool = srcStrategy.pool();

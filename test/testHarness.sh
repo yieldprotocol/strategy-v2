@@ -6,7 +6,9 @@ STRATEGIES=(\
   "0x13Ba156CbeE7b9e0FC9AEE8310E8b26DDC93392f")
 
 export NETWORK="ARBITRUM"
+export MOCK=false
 
 for strategy in ${STRATEGIES[@]}; do
   STRATEGY=$strategy forge test --match-path test/StrategyHarness.t.sol
+#  STRATEGY=$strategy forge test --match-path test/RewardsHarness.t.sol
 done

@@ -10,11 +10,12 @@ import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.s
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import { TestConstants } from "./utils/TestConstants.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
 /// @dev This test harness tests that a deployed and invested strategy is functional.
 
-abstract contract ZeroState is Test {
+abstract contract ZeroState is Test, TestConstants {
     using stdStorage for StdStorage;
 
     address deployer = address(bytes20(keccak256("deployer")));
@@ -22,7 +23,7 @@ abstract contract ZeroState is Test {
     address bob = address(bytes20(keccak256("bob")));
     address hole = address(bytes20(keccak256("hole")));
 
-    string network = "tenderly";
+    string network = TENDERLY;
 
     address timelock;
     ICauldron cauldron;

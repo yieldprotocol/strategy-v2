@@ -89,4 +89,34 @@ interface IStrategy is IStrategyMigrator {
     function burnDivested(address baseTo)
         external
         returns (uint256 baseObtained);
+
+    /// @dev Token used as rewards
+    function rewardsToken() external view returns(IERC20);
+    
+    /// @dev Rewards schedule
+    function rewardsPeriod() external view returns(uint32 start, uint32 end);
+
+    /// @dev Rewards per token
+    function rewardsPerToken() external view returns(uint128 accumulated, uint32 lastUpdated, uint96 rate);
+    
+    /// @dev Rewards accumulated by users
+    function rewards(address user) external view returns(uint128 accumulatedUserStart, uint128 accumulatedCheckpoint);
+
+    /// @dev Set the rewards token
+    function setRewardsToken(IERC20 rewardsToken_)
+        external;
+
+    /// @dev Set a rewards schedule
+    function setRewards(uint32 start, uint32 end, uint96 rate)
+        external;
+
+    /// @dev Claim all rewards from caller into a given address
+    function claim(address to)
+        external
+        returns (uint256 claiming);
+
+    /// @dev Trigger a claim for any user
+    function remit(address user)
+        external
+        returns (uint256 claiming);
 }
