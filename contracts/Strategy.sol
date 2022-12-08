@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
+// Audit of commit 6bb7c7f at https://hackmd.io/@devtooligan/YieldStrategyV2Review2022-12-07
+// Fixes not applied, do not use in production.
+
 pragma solidity >=0.8.13;
 
 // TODO: Check for reentrancy, although this doesn't interact with unknown contracts
