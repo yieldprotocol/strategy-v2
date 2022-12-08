@@ -92,7 +92,12 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
     // ----------------------- INVEST & DIVEST --------------------------- //
 
-    /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
+    /// @notice Mock pool mint called by a strategy when trying to migrate.
+    /// @dev Will initialize the strategy and return strategy tokens.
+    /// It is expected that base has been transferred in, but no fyTokens
+    /// @return baseIn Amount of base tokens found in contract
+    /// @return fyTokenIn This is always returned as 0 since they aren't used
+    /// @return minted Amount of strategy tokens minted from base tokens which is the same as baseIn
     function mint(address, address, uint256, uint256)
         external
         override
@@ -100,6 +105,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
         baseIn = minted = _init(msg.sender);
+        fyTokenIn = 0; // Silence compiler warning
     }
 
     /// @dev Mint the first strategy tokens, without investing
