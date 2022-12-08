@@ -128,10 +128,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         isState(State.DEPLOYED)
         returns (uint256 minted)
     {
-        // Clear state variables from a potential migration
+        // Clear fyToken in case we initialized through `mint`
         delete fyToken;
-        delete maturity;
-        delete pool;
 
         cached = minted = base.balanceOf(address(this));
         require (minted > 0, "Not enough base in");
