@@ -292,7 +292,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         emit SoldFYToken(soldFYToken, returnedBase);
     }
 
-    /// @dev If we ejected the pool tokens, we can recapitalize the strategy to avoid a forced migration
+    /// @dev If we drained the strategy, we can recapitalize it with base to avoid a forced migration
     /// @return baseIn Amount of base tokens used to restart
     function restart()
         external
