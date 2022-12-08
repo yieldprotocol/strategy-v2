@@ -286,7 +286,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         isState(State.DRAINED)
         returns (uint256 baseIn)
     {
-        cached = baseIn = base.balanceOf(address(this));
+        require((cached = baseIn = base.balanceOf(address(this))) > 0, "No base to restart");
         _transition(State.DIVESTED, IPool(address(0)));
         emit Divested(address(0), 0, 0);
     }

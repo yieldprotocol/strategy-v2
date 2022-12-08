@@ -498,6 +498,16 @@ abstract contract DrainedState is InvestedTiltedState {
 }
 
 contract TestDrained is DrainedState {
+
+    function testNoRestartWithoutBase() public {
+        console2.log("strategy.restart()");
+
+        vm.expectRevert("No base to restart");
+        vm.prank(alice);
+        strategy.restart();
+
+    }
+    
     function testRestart() public {
         console2.log("strategy.restart()");
         uint256 restartAmount = 10 ** baseToken.decimals();
