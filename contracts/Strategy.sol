@@ -99,8 +99,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         auth
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
-        baseIn = minted = this.init(msg.sender);
-        fyTokenIn = 0;
+        baseIn = minted = _init(msg.sender);
     }
 
     /// @dev Mint the first strategy tokens, without investing
@@ -109,6 +108,17 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function init(address to)
         external
         auth
+        isState(State.DEPLOYED)
+        returns (uint256 minted)
+    {
+        minted = _init(to);
+    }
+
+    /// @dev Mint the first strategy tokens, without investing
+    /// @param to Recipient for the strategy tokens
+    /// @return minted Amount of strategy tokens minted from base tokens
+    function _init(address to)
+        internal
         isState(State.DEPLOYED)
         returns (uint256 minted)
     {
