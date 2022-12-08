@@ -4,6 +4,6 @@ out = 'artifacts'
 libs = ['lib']
 solc_version = '0.8.15'
 
-rpc_endpoints = { MAINNET = "${MAINNET_RPC}", ARBITRUM = "${ARBITRUM_RPC}", TENDERLY = "https://rpc.tenderly.co/fork/b1ef7daa-73f0-4558-8502-b0b501b1ab9a" }
+rpc_endpoints = { MAINNET = "${MAINNET_RPC}", ARBITRUM = "${ARBITRUM_RPC}", TENDERLY = "https://rpc.tenderly.co/fork/6c5d4b71-8bf2-4a56-90eb-7fd26e2dfe35" }
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config

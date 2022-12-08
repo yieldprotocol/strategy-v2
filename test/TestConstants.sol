@@ -34,6 +34,7 @@ contract TestConstants {
     string public constant TENDERLY = "TENDERLY";
     string public constant MOCK = "MOCK";
     string public constant NETWORK = "NETWORK";
+    string public constant RPC = "RPC";
 
     string public constant TIMELOCK = "TIMELOCK";
     string public constant CAULDRON = "CAULDRON";

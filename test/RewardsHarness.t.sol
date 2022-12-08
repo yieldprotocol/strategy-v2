@@ -26,14 +26,19 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
     uint256 public strategyUnit;
     IERC20 public rewards;
     uint256 public rewardsUnit;
-    uint256 totalRewards = 10 * WAD;
-    uint256 length = 1000000;
+    uint256 totalRewards; // = 10 * WAD;
+    uint256 length; // = 1000000;
 
 
     address user;
     address other;
     address timelock;
     address me;
+
+    uint256 userProportion;
+    uint256 userMintTime;
+    uint256 otherProportion;
+    uint256 otherMintTime;
 
     function setUpMock() public {
         setUpHarness(LOCALHOST); // TODO: Merge with the unit tests
@@ -51,7 +56,7 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
 
     function setUp() public virtual {
         string memory network = vm.envOr(NETWORK, LOCALHOST);
-        if (!equal(network, LOCALHOST)) vm.createSelectFork(network);
+        if (!equal(network, LOCALHOST)) vm.createSelectFork(vm.envOr("RPC", LOCALHOST)); // TODO: Why doesn't it pick RPC from TestConstants?
 
         if (vm.envOr(MOCK, true)) setUpMock();
         else setUpHarness(network);
@@ -67,6 +72,17 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
         vm.label(me, "me");
         vm.label(address(strategy), "strategy");
         vm.label(address(rewards), "rewards");
+
+        cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
+        strategy.mint(user);
+
+        cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
+        strategy.mint(other);
+
+        userProportion = strategy.balanceOf(user) * 1e18 / strategy.totalSupply();
+        userMintTime = block.timestamp;
+        otherProportion = strategy.balanceOf(other) * 1e18 / strategy.totalSupply();
+        otherMintTime = block.timestamp;
     }
 
     modifier skipRewardsTokenSet() {
@@ -172,6 +188,8 @@ abstract contract WithProgram is WithRewardsToken {
         (uint256 start, uint256 end) = strategy.rewardsPeriod();
         if(start == 0 && end == 0 || block.timestamp > end) {
             console2.log("Setting Rewards Period");
+            length = 1000000;
+            totalRewards = 10 * rewardsUnit;
             start = block.timestamp + 1000000;
             end = start + length;
             uint256 rate = totalRewards / length;
@@ -180,6 +198,10 @@ abstract contract WithProgram is WithRewardsToken {
             strategy.setRewards(uint32(start), uint32(end), uint96(rate));
 
             cash(rewards, address(strategy), totalRewards); // Rewards to be distributed
+        } else {
+            length = end - start;
+            (,, uint96 rate) = strategy.rewardsPerToken();
+            totalRewards = length * rate;
         }
     }
 }
@@ -198,14 +220,14 @@ contract WithProgramTest is WithProgram {
     }
 
     function testDoesntUpdateRewardsPerToken() public skipRewardsPeriodStarted {
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
         (uint128 accumulated,,) = strategy.rewardsPerToken();
         assertEq(accumulated, 0);
     }
 
     function testDoesntUpdateUserRewards() public skipRewardsPeriodStarted {
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
         (uint128 accumulated,) = strategy.rewards(user);
         assertEq(accumulated, 0);
@@ -241,7 +263,7 @@ contract DuringProgramTest is DuringProgram {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
         vm.warp(start + elapsed);
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
 
         (uint128 accumulated, uint32 lastUpdated, uint96 rate) = strategy.rewardsPerToken();
@@ -254,9 +276,10 @@ contract DuringProgramTest is DuringProgram {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
         vm.warp(start + elapsed);
-        vm.prank(user);
+        vm.startPrank(user);
         strategy.transfer(address(strategy), strategy.balanceOf(user));
         strategy.burn(user);
+        vm.stopPrank();
 
         (uint128 accumulated, uint32 lastUpdated, uint96 rate) = strategy.rewardsPerToken();
         assertEq(lastUpdated, block.timestamp);
@@ -280,8 +303,15 @@ contract DuringProgramTest is DuringProgram {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
 
+        // deposit = mintAmount + pool.balanceOf(address(strategy)) - strategy.cached
+        // deposit <= type(uint256).max / strategy.totalSupply() 
+        // mintAmount + pool.balanceOf(address(strategy)) - strategy.cached <= type(uint256).max / strategy.totalSupply()
+        // mintAmount <= type(uint256).max / strategy.totalSupply() - pool.balanceOf(address(strategy)) + strategy.cached
+        // mintAmount = uint128(bound(mintAmount, 0, type(uint256).max / strategy.totalSupply() - strategy.pool().balanceOf(address(strategy)) + strategy.cached()));
+        mintAmount = uint128(bound(mintAmount, 0, strategyUnit * 1e18)); // TODO: 1e18 full tokens is a ridiculously high amount, but it would be better to replace it by the actual limit.
+
         vm.warp(start + elapsed);
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        cash(IERC20(address(strategy.pool())), address(strategy), mintAmount);
         strategy.mint(user);
         (uint128 accumulatedUserStart, uint128 accumulatedCheckpoint) = strategy.rewards(user);
         (uint128 accumulatedPerToken,,) = strategy.rewardsPerToken();
@@ -290,7 +320,7 @@ contract DuringProgramTest is DuringProgram {
         elapseAgain = uint32(bound(elapseAgain, 0, end - (start + elapsed)));
         vm.warp(start + elapsed + elapseAgain);
         uint256 userBalance = strategy.balanceOf(user);
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        cash(IERC20(address(strategy.pool())), address(strategy), mintAmount);
         strategy.mint(user);
         (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
         (uint128 accumulatedUser,) = strategy.rewards(user);
@@ -305,8 +335,10 @@ contract DuringProgramTest is DuringProgram {
         burnAmount = uint128(bound(burnAmount, 0, userBalance)) / 2;
 
         vm.warp(start + elapsed);
-        strategy.transfer(address(strategy), strategy.balanceOf(user) / 2);
+        vm.startPrank(user);
+        strategy.transfer(address(strategy), burnAmount);
         strategy.burn(user);
+
         (uint128 accumulatedUserStart, uint128 accumulatedCheckpoint) = strategy.rewards(user);
         (uint128 accumulatedPerToken,,) = strategy.rewardsPerToken();
         assertEq(accumulatedCheckpoint, accumulatedPerToken);
@@ -314,8 +346,10 @@ contract DuringProgramTest is DuringProgram {
         elapseAgain = uint32(bound(elapseAgain, 0, end - (start + elapsed)));
         vm.warp(start + elapsed + elapseAgain);
         userBalance = strategy.balanceOf(user);
-        strategy.transfer(address(strategy), userBalance);
+        
+        strategy.transfer(address(strategy), burnAmount);
         strategy.burn(user);
+        vm.stopPrank();
         (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
         (uint128 accumulatedUser,) = strategy.rewards(user);
         assertEq(accumulatedUser, accumulatedUserStart + userBalance * (accumulatedPerTokenNow - accumulatedPerToken) / 1e18);
@@ -351,77 +385,50 @@ contract DuringProgramTest is DuringProgram {
     }
 
     function testClaim() public {
-        (uint32 start,) = strategy.rewardsPeriod();
-        uint256 elapsed = length / 10; //  100_000
-        vm.warp(start + elapsed);
+        (uint32 start, uint32 end) = strategy.rewardsPeriod();
+        uint256 elapsed = end - (userMintTime >= start ? userMintTime : start);
+        vm.warp(end);
 
         (uint128 accumulatedUser,) = strategy.rewards(user);
         assertEq(accumulatedUser, 0);
 
         track("otherRewardsBalance", rewards.balanceOf(other));
 
-        uint256 calculatedRewards = totalRewards * elapsed / length;
+        (,, uint96 rate) = strategy.rewardsPerToken();
+        uint256 expectedRewards = rate * elapsed * userProportion / 1e18;
 
-        vm.expectEmit(true, true, false, false);
-        emit Claimed(user, other, calculatedRewards);
         vm.prank(user);
         strategy.claim(other);
         (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
 
-        uint256 expectedRewards = uint256(accumulatedPerTokenNow) * strategy.totalSupply() / 1e18;
-        assertEq(expectedRewards, calculatedRewards);
+        uint256 calculatedRewards = uint256(accumulatedPerTokenNow) * strategy.balanceOf(user) / 1e18;
 
-        assertTrackPlusEq("otherRewardsBalance", expectedRewards, rewards.balanceOf(other));
-        assertEq(expectedRewards, WAD);
-    }
-
-    function testClaim(uint32 elapsed) public {
-        (uint32 start, uint32 end) = strategy.rewardsPeriod();
-        elapsed = uint32(bound(elapsed, 1, end - start));
-        vm.warp(start + elapsed);
-
-        (uint128 accumulatedUser,) = strategy.rewards(user);
-        assertEq(accumulatedUser, 0);
-
-        track("otherRewardsBalance", rewards.balanceOf(other));
-
-        uint256 calculatedRewards = totalRewards * elapsed / length;
-
-        vm.expectEmit(true, true, false, false);
-        emit Claimed(user, other, calculatedRewards);
-        vm.prank(user);
-        strategy.claim(other);
-        (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
-
-        uint256 expectedRewards = uint256(accumulatedPerTokenNow) * strategy.totalSupply() / 1e18;
-        assertEq(expectedRewards, calculatedRewards);
-
-        assertTrackPlusEq("otherRewardsBalance", expectedRewards, rewards.balanceOf(other));
+        assertTrackPlusEq("otherRewardsBalance", calculatedRewards, rewards.balanceOf(other));
+        assertApproxEqRel(expectedRewards, calculatedRewards, 1e14);
     }
 
 
-    function testRemit(uint32 elapsed) public {
+    function testRemit() public {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
-        elapsed = uint32(bound(elapsed, 1, end - start));
-        vm.warp(start + elapsed);
+        uint256 elapsed = end - (userMintTime >= start ? userMintTime : start);
+        vm.warp(end);
 
         (uint128 accumulatedUser,) = strategy.rewards(user);
         assertEq(accumulatedUser, 0);
 
         track("userRewardsBalance", rewards.balanceOf(user));
 
-        uint256 calculatedRewards = totalRewards * elapsed / length;
+        (,, uint96 rate) = strategy.rewardsPerToken();
+        uint256 expectedRewards = rate * elapsed * userProportion / 1e18;
 
-        vm.expectEmit(true, true, false, false);
-        emit Claimed(user, user, calculatedRewards);
         vm.prank(other);
-        strategy.remit(user);
+        strategy.claim(user);
         (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
 
-        uint256 expectedRewards = uint256(accumulatedPerTokenNow) * strategy.totalSupply() / 1e18;
-        assertEq(expectedRewards, calculatedRewards);
+        uint256 calculatedRewards = uint256(accumulatedPerTokenNow) * strategy.balanceOf(user) / 1e18;
 
-        assertTrackPlusEq("userRewardsBalance", expectedRewards, rewards.balanceOf(user));
+        assertTrackPlusEq("userRewardsBalance", calculatedRewards, rewards.balanceOf(user));
+        assertApproxEqRel(expectedRewards, calculatedRewards, 1e14);
     }
 }
 
@@ -458,18 +465,22 @@ contract AfterProgramEndTest is AfterProgramEnd {
     }
 
     function testAccumulateNoMore() public {
-        (,, uint96 rate) = strategy.rewardsPerToken();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
-        uint256 expectedAccumulated = 1e18 * ((end - start) * rate / strategy.totalSupply());
-        vm.warp(end + 10);
-
-        cash(IERC20(address(strategy.pool())), address(strategy), WAD);
+        vm.warp(end);
+        cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
-
         (uint128 globalAccumulated,,) = strategy.rewardsPerToken();
         (, uint128 userAccumulated) = strategy.rewards(user);
 
-        assertEq(globalAccumulated, expectedAccumulated);
-        assertEq(userAccumulated, expectedAccumulated);
+        vm.warp(end + 10);
+
+        cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
+        strategy.mint(user);
+
+        (uint128 globalAccumulatedAfter,,) = strategy.rewardsPerToken();
+        (, uint128 userAccumulatedAfter) = strategy.rewards(user);
+
+        assertEq(globalAccumulated, globalAccumulatedAfter);
+        assertEq(userAccumulated, userAccumulatedAfter);
     }
 }
