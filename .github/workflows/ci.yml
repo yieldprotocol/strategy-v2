@@ -20,4 +20,5 @@ jobs:
           version: nightly
 
       - name: Run tests
-        run: forge test -vvv
+        run: forge test --match-path test/StrategyMigrator.t.sol -vvv
+        run: forge test --match-path test/StrategyTest.t.sol -vvv

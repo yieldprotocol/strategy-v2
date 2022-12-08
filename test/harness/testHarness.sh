@@ -11,5 +11,6 @@ export NETWORK="ARBITRUM"
 export MOCK=false
 
 for strategy in ${STRATEGIES[@]}; do
-  STRATEGY=$strategy forge test --match-path test/RewardsHarness.t.sol
+  STRATEGY=$strategy forge test --match-path test/harness/RewardsHarness.t.sol
+  STRATEGY=$strategy forge test --match-path test/harness/StrategyHarness.t.sol
 done

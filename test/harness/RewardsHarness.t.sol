@@ -6,10 +6,9 @@ import "forge-std/console2.sol";
 
 import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import { ERC20Mock } from "lib/yield-utils-v2/contracts/mocks/ERC20Mock.sol";
-// import { Strategy } from "../contracts/Strategy.sol";
-import { IStrategy } from "../contracts/interfaces/IStrategy.sol";
-import { TestExtensions } from "./utils/TestExtensions.sol";
-import { TestConstants } from "./utils/TestConstants.sol";
+import { IStrategy } from "../../contracts/interfaces/IStrategy.sol";
+import { TestExtensions } from "./../utils/TestExtensions.sol";
+import { TestConstants } from "./../utils/TestConstants.sol";
 
 
 using stdStorage for StdStorage;
