@@ -73,12 +73,14 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
         vm.label(address(strategy), "strategy");
         vm.label(address(rewards), "rewards");
 
+        // Mint some rewards
         cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
         strategy.mint(user);
 
         cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
         strategy.mint(other);
 
+        // Record data for claim tests
         userProportion = strategy.balanceOf(user) * 1e18 / strategy.totalSupply();
         userMintTime = block.timestamp;
         otherProportion = strategy.balanceOf(other) * 1e18 / strategy.totalSupply();
@@ -186,6 +188,7 @@ abstract contract WithProgram is WithRewardsToken {
         super.setUp();
 
         (uint256 start, uint256 end) = strategy.rewardsPeriod();
+        // If there isn't a rewards period set, or the rewards period has ended, set a new one
         if(start == 0 && end == 0 || block.timestamp > end) {
             console2.log("Setting Rewards Period");
             length = 1000000;
@@ -258,6 +261,7 @@ contract DuringProgramTest is DuringProgram {
         strategy.setRewards(start, end, rate);
     }
 
+    // Warp somewhere in rewards period, mint, and check that rewardsPerToken is updated
     function testUpdatesRewardsPerTokenOnMint(uint32 elapsed) public {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
@@ -271,6 +275,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulated, uint256(rate) * elapsed * 1e18 / totalSupply); // accumulated is stored scaled up by 1e18
     }
 
+    // Warp somewhere in rewards period, burn, and check that rewardsPerToken is updated
     function testUpdatesRewardsPerTokenOnBurn(uint32 elapsed) public {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
@@ -286,6 +291,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulated, uint256(rate) * elapsed * 1e18 / totalSupply); // accumulated is stored scaled up by 1e18
     }
 
+    // Warp somewhere in rewards period, transfer, and check that rewardsPerToken is updated
     function testUpdatesRewardsPerTokenOnTransfer(uint32 elapsed) public {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
@@ -310,6 +316,7 @@ contract DuringProgramTest is DuringProgram {
         // mintAmount = uint128(bound(mintAmount, 0, type(uint256).max / strategy.totalSupply() - strategy.pool().balanceOf(address(strategy)) + strategy.cached()));
         mintAmount = uint128(bound(mintAmount, 0, strategyUnit * 1e18)); // TODO: 1e18 full tokens is a ridiculously high amount, but it would be better to replace it by the actual limit.
 
+        // First, check that rewardsPerToken is updated
         vm.warp(start + elapsed);
         cash(IERC20(address(strategy.pool())), address(strategy), mintAmount);
         strategy.mint(user);
@@ -317,6 +324,7 @@ contract DuringProgramTest is DuringProgram {
         (uint128 accumulatedPerToken,,) = strategy.rewardsPerToken();
         assertEq(accumulatedCheckpoint, accumulatedPerToken);
 
+        // Then, check that user rewards are updated
         elapseAgain = uint32(bound(elapseAgain, 0, end - (start + elapsed)));
         vm.warp(start + elapsed + elapseAgain);
         uint256 userBalance = strategy.balanceOf(user);
@@ -334,6 +342,7 @@ contract DuringProgramTest is DuringProgram {
         assertGt(userBalance, 0);
         burnAmount = uint128(bound(burnAmount, 0, userBalance)) / 2;
 
+        // First, check that rewardsPerToken is updated
         vm.warp(start + elapsed);
         vm.startPrank(user);
         strategy.transfer(address(strategy), burnAmount);
@@ -343,6 +352,7 @@ contract DuringProgramTest is DuringProgram {
         (uint128 accumulatedPerToken,,) = strategy.rewardsPerToken();
         assertEq(accumulatedCheckpoint, accumulatedPerToken);
 
+        // Then, check that user rewards are updated
         elapseAgain = uint32(bound(elapseAgain, 0, end - (start + elapsed)));
         vm.warp(start + elapsed + elapseAgain);
         userBalance = strategy.balanceOf(user);
@@ -362,6 +372,7 @@ contract DuringProgramTest is DuringProgram {
         assertGt(userBalance, 0);
         transferAmount = uint128(bound(transferAmount, 0, userBalance));
 
+        // First, check that rewardsPerToken is updated
         vm.warp(start + elapsed);
         vm.prank(user);
         strategy.transfer(other, transferAmount);
@@ -371,6 +382,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulatedCheckpointUser, accumulatedPerToken);
         assertEq(accumulatedCheckpointOther, accumulatedPerToken);
 
+        // Then, check that user rewards are updated
         elapseAgain = uint32(bound(elapseAgain, 0, end - (start + elapsed)));
         vm.warp(start + elapsed + elapseAgain);
         userBalance = strategy.balanceOf(user);
@@ -395,16 +407,12 @@ contract DuringProgramTest is DuringProgram {
         track("otherRewardsBalance", rewards.balanceOf(other));
 
         (,, uint96 rate) = strategy.rewardsPerToken();
-        uint256 expectedRewards = rate * elapsed * userProportion / 1e18;
+        uint256 expectedRewards = rate * elapsed * userProportion / 1e18; // This works because we know no one else has minted after the user
 
         vm.prank(user);
         strategy.claim(other);
-        (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
 
-        uint256 calculatedRewards = uint256(accumulatedPerTokenNow) * strategy.balanceOf(user) / 1e18;
-
-        assertTrackPlusEq("otherRewardsBalance", calculatedRewards, rewards.balanceOf(other));
-        assertApproxEqRel(expectedRewards, calculatedRewards, 1e14);
+        assertApproxEqRel(expectedRewards, rewards.balanceOf(other) - tracked["otherRewardsBalance"], 1e14);
     }
 
 
@@ -419,16 +427,12 @@ contract DuringProgramTest is DuringProgram {
         track("userRewardsBalance", rewards.balanceOf(user));
 
         (,, uint96 rate) = strategy.rewardsPerToken();
-        uint256 expectedRewards = rate * elapsed * userProportion / 1e18;
+        uint256 expectedRewards = rate * elapsed * userProportion / 1e18; // This works because we know no one else has minted after the user
 
         vm.prank(other);
         strategy.claim(user);
-        (uint128 accumulatedPerTokenNow,,) = strategy.rewardsPerToken();
 
-        uint256 calculatedRewards = uint256(accumulatedPerTokenNow) * strategy.balanceOf(user) / 1e18;
-
-        assertTrackPlusEq("userRewardsBalance", calculatedRewards, rewards.balanceOf(user));
-        assertApproxEqRel(expectedRewards, calculatedRewards, 1e14);
+        assertApproxEqRel(expectedRewards, rewards.balanceOf(user) - tracked["userRewardsBalance"], 1e14);
     }
 }
 
@@ -465,13 +469,15 @@ contract AfterProgramEndTest is AfterProgramEnd {
     }
 
     function testAccumulateNoMore() public {
-        (uint32 start, uint32 end) = strategy.rewardsPeriod();
+        // Warp to end and mint to update accumulators
+        (, uint32 end) = strategy.rewardsPeriod();
         vm.warp(end);
         cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
         (uint128 globalAccumulated,,) = strategy.rewardsPerToken();
         (, uint128 userAccumulated) = strategy.rewards(user);
 
+        // Warp again, and check accumulators haven't changed
         vm.warp(end + 10);
 
         cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
