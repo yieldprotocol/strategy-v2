@@ -21,18 +21,12 @@ interface DonorStrategy {
 abstract contract DeployedState is Test, TestConstants {
     using stdStorage for StdStorage;
 
-    // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
-    // YSDAI6MJD: 0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295
-    // YSUSDC6MMS: 0xFBc322415CBC532b54749E31979a803009516b5D
-    // YSUSDC6MJD: 0x8e8D6aB093905C400D583EfD37fbeEB1ee1c0c39
-    // YSETH6MMS: 0xcf30A5A994f9aCe5832e30C138C9697cda5E1247
-    // YSETH6MJD: 0x831dF23f7278575BA0b136296a285600cD75d076
-    // YSFRAX6MMS: 0x1565F539E96c4d440c38979dbc86Fd711C995DD6
-    // YSFRAX6MJD: 0x47cC34188A2869dAA1cE821C8758AA8442715831
-
-    // Pin to block 15741300 on 2022 September to March roll, so that the March pool exists and is initialized, but has no fyToken
-    // Roll tx: https://etherscan.io/tx/0x26eb4d44a310d953db5bcf2fdd47350fadac8be60d0f7c00313a0f83c4ff8d6b
-    // Pool: 0xbdc7bdae87dfe602e91fdd019c4c0334c38f6a46
+    // We use a custom tenderly fork with pools that are not initialized, but fyToken that have been added to the cauldron
+    // Pools:
+    // 0x303030390000, 0x8c91088DEcc62E3e377C7e0085179518D2D491F6
+    // 0x303130390000, 0xD57355f1CA20408d50b136b1279bA7833dd77E82
+    // 0x303230390000, 0xb052ea3b1cFa1E91180019f6247c67b92B9D4F6A
+    // 0x313830390000, 0x9b4397977a5567E49eF300311ad82f1D9749B22f
 
     address deployer = address(bytes20(keccak256("deployer")));
     address alice = address(bytes20(keccak256("alice")));
@@ -94,10 +88,10 @@ abstract contract DeployedState is Test, TestConstants {
     }
 
     function setUp() public virtual {
-        vm.createSelectFork(MAINNET, 15741300);
+        vm.createSelectFork(UNIT_TESTS);
 
-        seriesId = donorStrategy.seriesId();
-        pool = donorStrategy.pool();
+        seriesId = 0x303130390000;
+        pool = IPool(0xD57355f1CA20408d50b136b1279bA7833dd77E82);
         fyToken = IFYToken(address(pool.fyToken()));
         baseToken = pool.baseToken();
         sharesToken = pool.sharesToken();
@@ -106,8 +100,8 @@ abstract contract DeployedState is Test, TestConstants {
         strategy = new Strategy("StrategyTest.t.sol", "test", fyToken);
 
         // The strategy needs to be given permission to initalize the pool
-        // vm.prank(timelock);
-        // AccessControl(address(pool)).grantRole(IPool.init.selector, address(strategy));
+        vm.prank(timelock);
+        AccessControl(address(pool)).grantRole(IPool.init.selector, address(strategy));
 
         // Alice has privileged roles
         strategy.grantRole(Strategy.init.selector, alice);
@@ -242,16 +236,6 @@ contract DivestedStateTest is DivestedState {
         vm.prank(alice);
         strategy.invest(pool);
     }
-    
-    function testNoFYTokenInvest() public {
-        console2.log("strategy.invest()");
-
-        pool = IPool(0x52956Fb3DC3361fd24713981917f2B6ef493DCcC); // DAI only
-
-        vm.expectRevert(bytes("Only with no fyToken in the pool"));
-        vm.prank(alice);
-        strategy.invest(pool);
-    }
 
     function testInvest() public {
         console2.log("strategy.invest()");
@@ -290,7 +274,7 @@ abstract contract InvestedState is DivestedState {
 }
 
 contract InvestedStateTest is InvestedState {
-    function testmint() public {
+    function testMint() public {
         console2.log("strategy.mint()");
         uint256 poolIn = pool.totalSupply() / 1000;
         assertGt(poolIn, 0);
@@ -309,7 +293,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
-    function testburn() public {
+    function testBurn() public {
         console2.log("strategy.burn()");
         uint256 burnAmount = strategy.balanceOf(hole) / 2;
         assertGt(burnAmount, 0);

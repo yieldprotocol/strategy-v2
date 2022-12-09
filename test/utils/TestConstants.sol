@@ -32,6 +32,7 @@ contract TestConstants {
     string public constant MAINNET = "MAINNET";
     string public constant ARBITRUM = "ARBITRUM";
     string public constant TENDERLY = "TENDERLY";
+    string public constant UNIT_TESTS = "UNIT_TESTS";
     string public constant MOCK = "MOCK";
     string public constant NETWORK = "NETWORK";
 
