@@ -13,20 +13,16 @@ import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Met
 import { TestConstants } from "./utils/TestConstants.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
-interface DonorStrategy {
-    function seriesId() external view returns (bytes6);
-    function pool() external view returns (IPool);
-}
 
 abstract contract DeployedState is Test, TestConstants {
     using stdStorage for StdStorage;
 
     // We use a custom tenderly fork with pools that are not initialized, but fyToken that have been added to the cauldron
     // Pools:
-    // 0x303030390000, 0x8c91088DEcc62E3e377C7e0085179518D2D491F6
-    // 0x303130390000, 0xD57355f1CA20408d50b136b1279bA7833dd77E82
-    // 0x303230390000, 0xb052ea3b1cFa1E91180019f6247c67b92B9D4F6A
-    // 0x313830390000, 0x9b4397977a5567E49eF300311ad82f1D9749B22f
+    //  0x303030390000 0xe2Cf890a20c022a034b2d89e6C573B68eD6feb70
+    //  0x303130390000 0x304765A87fD5f28A87f2078A88a42a575b973FF0
+    //  0x303230390000 0x8B4be6CD156CbD51Df8Fe603aD46DD3cd06A98d4
+    //  0x313830390000 0x16123dDcb3fBcA9b962D51d4B7001148e8Ac3036
 
     address deployer = address(bytes20(keccak256("deployer")));
     address alice = address(bytes20(keccak256("alice")));
@@ -36,7 +32,6 @@ abstract contract DeployedState is Test, TestConstants {
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    DonorStrategy donorStrategy = DonorStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
 
     bytes6 seriesId;
     IPool pool;
@@ -90,8 +85,8 @@ abstract contract DeployedState is Test, TestConstants {
     function setUp() public virtual {
         vm.createSelectFork(UNIT_TESTS);
 
-        seriesId = 0x303130390000;
-        pool = IPool(0xD57355f1CA20408d50b136b1279bA7833dd77E82);
+        seriesId = 0x313830390000;
+        pool = IPool(0x16123dDcb3fBcA9b962D51d4B7001148e8Ac3036);
         fyToken = IFYToken(address(pool.fyToken()));
         baseToken = pool.baseToken();
         sharesToken = pool.sharesToken();
