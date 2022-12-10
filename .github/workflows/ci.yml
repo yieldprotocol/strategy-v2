@@ -20,5 +20,4 @@ jobs:
           version: nightly
 
       - name: Run tests
-        run: forge test --match-path test/StrategyMigrator.t.sol -vvv
-        run: forge test --match-path test/StrategyTest.t.sol -vvv
+        run: MAINNET_RPC=${{ secrets.MAINNET_RPC }} ARBITRUM_RPC=${{ secrets.ARBITRUM_RPC }} forge test -vvv
