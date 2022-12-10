@@ -11,11 +11,12 @@ import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
 import { TestConstants } from "./../utils/TestConstants.sol";
+import { TestExtensions } from "./../utils/TestExtensions.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
 /// @dev This test harness tests that a deployed and invested strategy is functional.
 
-abstract contract ZeroState is Test, TestConstants {
+abstract contract ZeroState is Test, TestConstants, TestExtensions {
     using stdStorage for StdStorage;
 
     address deployer = address(bytes20(keccak256("deployer")));
@@ -35,47 +36,6 @@ abstract contract ZeroState is Test, TestConstants {
     IERC20Metadata baseToken;
     IERC20Metadata sharesToken;
 
-    mapping(string => uint256) tracked;
-
-    function cash(IERC20 token, address user, uint256 amount) public {
-        uint256 start = token.balanceOf(user);
-        deal(address(token), user, start + amount);
-    }
-
-    function track(string memory id, uint256 amount) public {
-        tracked[id] = amount;
-    }
-
-    function assertTrackPlusEq(string memory id, uint256 plus, uint256 amount) public {
-        assertEq(tracked[id] + plus, amount);
-    }
-
-    function assertTrackMinusEq(string memory id, uint256 minus, uint256 amount) public {
-        assertEq(tracked[id] - minus, amount);
-    }
-
-    function assertTrackPlusApproxEqAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
-        assertApproxEqAbs(tracked[id] + plus, amount, delta);
-    }
-
-    function assertTrackMinusApproxEqAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
-        assertApproxEqAbs(tracked[id] - minus, amount, delta);
-    }
-
-    function assertApproxGeAbs(uint256 a, uint256 b, uint256 delta) public {
-        assertGe(a, b);
-        assertApproxEqAbs(a, b, delta);
-    }
-
-    function assertTrackPlusApproxGeAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
-        assertGe(tracked[id] + plus, amount);
-        assertApproxEqAbs(tracked[id] + plus, amount, delta);
-    }
-
-    function assertTrackMinusApproxGeAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
-        assertGe(tracked[id] - minus, amount);
-        assertApproxEqAbs(tracked[id] - minus, amount, delta);
-    }
 
     modifier onlyEjected() {
         if (strategy.state() != Strategy.State.EJECTED) {
@@ -85,17 +45,12 @@ abstract contract ZeroState is Test, TestConstants {
         _;
     }
 
-
     modifier onlyDrained() {
         if (strategy.state() != Strategy.State.DRAINED) {
             console2.log("Strategy not drained, skipping...");
             return;
         }
         _;
-    }
-
-    function equal(string memory a, string memory b) public returns(bool) {
-        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
     function setUp() public virtual {
