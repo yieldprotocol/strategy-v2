@@ -19,12 +19,12 @@ import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 abstract contract ZeroState is Test, TestConstants, TestExtensions {
     using stdStorage for StdStorage;
 
+    bool ci; // Skip the tests on CI
+
     address deployer = address(bytes20(keccak256("deployer")));
     address alice = address(bytes20(keccak256("alice")));
     address bob = address(bytes20(keccak256("bob")));
     address hole = address(bytes20(keccak256("hole")));
-
-    string network = TENDERLY;
 
     address timelock;
     ICauldron cauldron;
@@ -53,40 +53,46 @@ abstract contract ZeroState is Test, TestConstants, TestExtensions {
         _;
     }
 
-    function setUp() public virtual {
-        vm.createSelectFork(network);
-
-        if (equal(vm.envString("NETWORK"), "MAINNET")) {
-            timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
-            cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
-            ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-        } else if (equal(vm.envString("NETWORK"), "ARBITRUM")) {
-            timelock = 0xd0a22827Aed2eF5198EbEc0093EA33A4CD641b6c;
-            cauldron = ICauldron(0x23cc87FBEBDD67ccE167Fa9Ec6Ad3b7fE3892E30);
-            ladle = ILadle(0x16E25cf364CeCC305590128335B8f327975d0560);
+    modifier skipOnCI() {
+        if (ci == true) {
+            console2.log("On CI, skipping...");
+            return;
         }
+        _;
+    }
 
-        strategy = Strategy(vm.envAddress("STRATEGY"));
-        baseToken = IERC20Metadata(address(strategy.base()));
+    function setUp() public virtual {
+        if (!(ci = vm.envOr(CI, true))) {
+            string memory rpc = vm.envOr(RPC, TENDERLY);
+            vm.createSelectFork(rpc);
 
-        // Alice has privileged roles
-        vm.startPrank(timelock);
-        strategy.grantRole(Strategy.init.selector, alice);
-        strategy.grantRole(Strategy.invest.selector, alice);
-        strategy.grantRole(Strategy.eject.selector, alice);
-        strategy.grantRole(Strategy.restart.selector, alice);
-        vm.stopPrank();
+            string memory network = vm.envOr(NETWORK, MAINNET);
+            timelock = addresses[network][TIMELOCK];
+            cauldron = ICauldron(addresses[network][LADLE]);
+            ladle = ILadle(addresses[network][CAULDRON]);
 
-        vm.label(deployer, "deployer");
-        vm.label(alice, "alice");
-        vm.label(bob, "bob");
-        vm.label(hole, "hole");
-        vm.label(address(strategy), "strategy");
+            strategy = Strategy(vm.envAddress(STRATEGY));
+            baseToken = IERC20Metadata(address(strategy.base()));
+
+            // Alice has privileged roles
+            vm.startPrank(timelock);
+            strategy.grantRole(Strategy.init.selector, alice);
+            strategy.grantRole(Strategy.invest.selector, alice);
+            strategy.grantRole(Strategy.eject.selector, alice);
+            strategy.grantRole(Strategy.restart.selector, alice);
+            vm.stopPrank();
+
+            vm.label(deployer, "deployer");
+            vm.label(alice, "alice");
+            vm.label(bob, "bob");
+            vm.label(hole, "hole");
+            vm.label(address(strategy), "strategy");
+        }     
     }
 }
 
 contract ZeroStateTest is ZeroState {
-    function testHarnessIsInvested() public {
+    function testHarnessIsInvested() public skipOnCI skipOnCI {
         assertTrue(strategy.state() == Strategy.State.INVESTED);
     } 
 }
@@ -96,21 +102,23 @@ abstract contract InvestedState is ZeroState {
     function setUp() public virtual override {
         super.setUp();
 
-        fyToken = strategy.fyToken();
-        pool = strategy.pool();
-        sharesToken = pool.sharesToken();
+        if (!ci) {
+            fyToken = strategy.fyToken();
+            pool = strategy.pool();
+            sharesToken = pool.sharesToken();
 
-        vm.label(address(pool), "pool");
-        vm.label(address(sharesToken), "sharesToken");
-        vm.label(address(baseToken), "baseToken");
-        vm.label(address(fyToken), "fyToken");
+            vm.label(address(pool), "pool");
+            vm.label(address(sharesToken), "sharesToken");
+            vm.label(address(baseToken), "baseToken");
+            vm.label(address(fyToken), "fyToken");
+        }
     } 
 }
 
 
 contract InvestedStateTest is InvestedState {
 
-    function testHarnessMintInvested() public {
+    function testHarnessMintInvested() public skipOnCI {
         console2.log("strategy.mint()");
 
         uint256 poolIn = pool.totalSupply() / 1000;
@@ -130,7 +138,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
-    function testHarnessBurnInvested() public {
+    function testHarnessBurnInvested() public skipOnCI {
         console2.log("strategy.burn()");
 
         uint256 poolIn = pool.totalSupply() / 1000;
@@ -152,7 +160,7 @@ contract InvestedStateTest is InvestedState {
         assertTrackMinusEq("cached", poolObtained, strategy.cached());
     }
 
-    function testHarnessEjectAuthInvested() public {
+    function testHarnessEjectAuthInvested() public skipOnCI {
         console2.log("strategy.eject()");
 
         vm.expectRevert(bytes("Access denied"));
@@ -160,7 +168,7 @@ contract InvestedStateTest is InvestedState {
         strategy.eject();
     }
 
-    function testHarnessEjectInvested() public {
+    function testHarnessEjectInvested() public skipOnCI {
         console2.log("strategy.eject()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
@@ -171,7 +179,7 @@ contract InvestedStateTest is InvestedState {
         assertTrue(strategy.state() == Strategy.State.DIVESTED ||strategy.state() == Strategy.State.EJECTED || strategy.state() == Strategy.State.DRAINED);
     } // --> Divested, Ejected or Drained
 
-    function testHarnessNoDivestBeforeMaturityInvested() public {
+    function testHarnessNoDivestBeforeMaturityInvested() public skipOnCI {
         console2.log("strategy.divest()");
 
         vm.expectRevert(bytes("Only after maturity"));
@@ -184,13 +192,15 @@ abstract contract EjectedOrDrainedState is InvestedState {
     function setUp() public virtual override {
         super.setUp();
 
-        vm.prank(alice);
-        strategy.eject();
+        if (!ci) {
+            vm.prank(alice);
+            strategy.eject();
+        }
     }
 }
 
 contract TestEjectedOrDrained is EjectedOrDrainedState {
-    function testHarnessBuyFYTokenEjected() public onlyEjected {
+    function testHarnessBuyFYTokenEjected() public skipOnCI onlyEjected {
         console2.log("strategy.buyFYToken()");
 
         uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
@@ -235,7 +245,7 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         assertEq(uint256(strategy.state()), 1);
     } // --> Divested
 
-    function testHarnessRestartDrained() public onlyDrained {
+    function testHarnessRestartDrained() public skipOnCI onlyDrained {
         console2.log("strategy.restart()");
         uint256 restartAmount = 10 ** baseToken.decimals();
 
@@ -255,12 +265,12 @@ abstract contract InvestedAfterMaturity is InvestedState {
     function setUp() public virtual override {
         super.setUp();
 
-        vm.warp(pool.maturity());
+       if (!ci) vm.warp(pool.maturity());
     }
 }
 
 contract InvestedAfterMaturityTest is InvestedAfterMaturity {
-    function testHarnessDivestAfterMaturity() public {
+    function testHarnessDivestAfterMaturity() public skipOnCI {
         console2.log("strategy.divest()");
 
         uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
@@ -280,11 +290,11 @@ abstract contract DivestedState is InvestedAfterMaturity {
     function setUp() public virtual override {
         super.setUp();
 
-        strategy.divest();
+        if (!ci) strategy.divest();
     }
 }
 contract DivestedStateTest is DivestedState {
-    function testHarnessNoRepeatedInit() public {
+    function testHarnessNoRepeatedInit() public skipOnCI {
         console2.log("strategy.init()");
         uint256 initAmount = 1e18;
 
@@ -293,7 +303,7 @@ contract DivestedStateTest is DivestedState {
         strategy.init(hole);
     }
 
-    function testHarnessMintDivested() public {
+    function testHarnessMintDivested() public skipOnCI {
         console2.log("strategy.mint()");
         uint256 baseIn = strategy.cached() / 1000;
         uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cached();
@@ -309,7 +319,7 @@ contract DivestedStateTest is DivestedState {
         assertTrackPlusEq("cached", baseIn, strategy.cached());
     }
 
-    function testHarnessBurnDivested() public {
+    function testHarnessBurnDivested() public skipOnCI {
         console2.log("strategy.burn()");
         // Let's get some tokens
         uint256 baseIn = strategy.cached() / 1000;

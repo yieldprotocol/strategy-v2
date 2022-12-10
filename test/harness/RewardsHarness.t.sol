@@ -14,12 +14,13 @@ import { TestConstants } from "./../utils/TestConstants.sol";
 using stdStorage for StdStorage;
 
 abstract contract Deployed is Test, TestExtensions, TestConstants {
-
     event RewardsTokenSet(IERC20 token);
     event RewardsSet(uint32 start, uint32 end, uint256 rate);
     event RewardsPerTokenUpdated(uint256 accumulated);
     event UserRewardsUpdated(address user, uint256 userRewards, uint256 paidRewardPerToken);
     event Claimed(address user, address receiver, uint256 claimed);
+
+    bool ci;
 
     IStrategy public strategy;
     uint256 public strategyUnit;
@@ -39,56 +40,58 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
     uint256 otherProportion;
     uint256 otherMintTime;
 
-    function setUpMock() public {
-        setUpHarness(LOCALHOST); // TODO: Merge with the unit tests
-    }
-
-    function setUpHarness(string memory network) public {
-        timelock = addresses[network][TIMELOCK];
-
-        strategy = IStrategy(vm.envAddress("STRATEGY"));
-        strategyUnit = uint128(10 ** ERC20Mock(address(strategy)).decimals());
-
-        rewards = IERC20(address(new ERC20Mock("Rewards Token", "REW")));
-        rewardsUnit = 10 ** ERC20Mock(address(rewards)).decimals();
-    }
-
     function setUp() public virtual {
-        string memory network = vm.envOr(NETWORK, LOCALHOST);
-        if (!equal(network, LOCALHOST)) vm.createSelectFork(vm.envOr("RPC", LOCALHOST)); // TODO: Why doesn't it pick RPC from TestConstants?
+        if (!(ci = vm.envOr(CI, true))) {
+            string memory rpc = vm.envOr(RPC, TENDERLY);
+            vm.createSelectFork(rpc);
 
-        if (vm.envOr(MOCK, true)) setUpMock();
-        else setUpHarness(network);
+            string memory network = vm.envOr(NETWORK, MAINNET);
+            timelock = addresses[network][TIMELOCK];
 
-        //... Users ...
-        user = address(1);
-        other = address(2);
-        me = 0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84;
+            strategy = IStrategy(vm.envAddress(STRATEGY));
+            strategyUnit = uint128(10 ** ERC20Mock(address(strategy)).decimals());
 
-        vm.label(user, "user");
-        vm.label(other, "other");
-        vm.label(timelock, "timelock");
-        vm.label(me, "me");
-        vm.label(address(strategy), "strategy");
-        vm.label(address(rewards), "rewards");
+            rewards = IERC20(address(new ERC20Mock("Rewards Token", "REW")));
+            rewardsUnit = 10 ** ERC20Mock(address(rewards)).decimals();
 
-        // Mint some rewards
-        cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
-        strategy.mint(user);
+            //... Users ...
+            user = address(1);
+            other = address(2);
+            me = 0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84;
 
-        cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
-        strategy.mint(other);
+            vm.label(user, "user");
+            vm.label(other, "other");
+            vm.label(timelock, "timelock");
+            vm.label(me, "me");
+            vm.label(address(strategy), "strategy");
+            vm.label(address(rewards), "rewards");
 
-        // Record data for claim tests
-        userProportion = strategy.balanceOf(user) * 1e18 / strategy.totalSupply();
-        userMintTime = block.timestamp;
-        otherProportion = strategy.balanceOf(other) * 1e18 / strategy.totalSupply();
-        otherMintTime = block.timestamp;
+            // Mint some rewards
+            cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
+            strategy.mint(user);
+
+            cash(IERC20(address(strategy.pool())), address(strategy), 100 * strategyUnit);
+            strategy.mint(other);
+
+            // Record data for claim tests
+            userProportion = strategy.balanceOf(user) * 1e18 / strategy.totalSupply();
+            userMintTime = block.timestamp;
+            otherProportion = strategy.balanceOf(other) * 1e18 / strategy.totalSupply();
+            otherMintTime = block.timestamp;
+        }
     }
 
     modifier skipRewardsTokenSet() {
         if(address(strategy.rewardsToken()) != address(0)) {
             console2.log("Rewards token set, skipping test");
+        }
+        _;
+    }
+
+    modifier skipOnCI() {
+        if (ci == true) {
+            console2.log("On CI, skipping...");
+            return;
         }
         _;
     }
@@ -121,7 +124,7 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
 
 contract DeployedTest is Deployed {
 
-    function testSetRewardsToken(IERC20 token) public skipRewardsTokenSet {
+    function testSetRewardsToken(IERC20 token) public skipOnCI skipRewardsTokenSet {
         vm.expectEmit(true, false, false, false);
         emit RewardsTokenSet(token);
 
@@ -136,10 +139,12 @@ abstract contract WithRewardsToken is Deployed {
     function setUp() public override virtual {
         super.setUp();
 
-        if(address(strategy.rewardsToken()) == address(0)) {
-            console2.log("Setting Rewards Token");
-            vm.prank(timelock);
-            strategy.setRewardsToken(rewards);
+        if (!ci) {
+            if(address(strategy.rewardsToken()) == address(0)) {
+                console2.log("Setting Rewards Token");
+                vm.prank(timelock);
+                strategy.setRewardsToken(rewards);
+            }
         }
     }
 }
@@ -147,14 +152,14 @@ abstract contract WithRewardsToken is Deployed {
 
 contract WithRewardsTokenTest is WithRewardsToken {
 
-    function testDontResetRewardsToken(address token) public {
+    function testDontResetRewardsToken(address token) public skipOnCI {
         vm.expectRevert(bytes("Rewards token already set"));
 
         vm.prank(timelock);
         strategy.setRewardsToken(IERC20(token));
     }
 
-    function testStartBeforeEnd(uint32 start, uint32 end) public skipRewardsPeriodSet {
+    function testStartBeforeEnd(uint32 start, uint32 end) public skipOnCI skipRewardsPeriodSet {
         end = uint32(bound(end, block.timestamp, type(uint32).max));
         end = uint32(bound(end, block.timestamp, type(uint32).max - 1));
         start = uint32(bound(start, end + 1, type(uint32).max));
@@ -163,7 +168,7 @@ contract WithRewardsTokenTest is WithRewardsToken {
         strategy.setRewards(start, end, 1);
     }
 
-    function testSetRewards(uint32 start, uint32 end, uint96 rate) public skipRewardsPeriodSet {
+    function testSetRewards(uint32 start, uint32 end, uint96 rate) public skipOnCI skipRewardsPeriodSet {
         end = uint32(bound(end, block.timestamp + 1, type(uint32).max));
         start = uint32(bound(start, block.timestamp, end - 1));
 
@@ -186,31 +191,33 @@ abstract contract WithProgram is WithRewardsToken {
     function setUp() public override virtual {
         super.setUp();
 
-        (uint256 start, uint256 end) = strategy.rewardsPeriod();
-        // If there isn't a rewards period set, or the rewards period has ended, set a new one
-        if(start == 0 && end == 0 || block.timestamp > end) {
-            console2.log("Setting Rewards Period");
-            length = 1000000;
-            totalRewards = 10 * rewardsUnit;
-            start = block.timestamp + 1000000;
-            end = start + length;
-            uint256 rate = totalRewards / length;
+        if (!ci) {
+            (uint256 start, uint256 end) = strategy.rewardsPeriod();
+            // If there isn't a rewards period set, or the rewards period has ended, set a new one
+            if(start == 0 && end == 0 || block.timestamp > end) {
+                console2.log("Setting Rewards Period");
+                length = 1000000;
+                totalRewards = 10 * rewardsUnit;
+                start = block.timestamp + 1000000;
+                end = start + length;
+                uint256 rate = totalRewards / length;
 
-            vm.prank(timelock);
-            strategy.setRewards(uint32(start), uint32(end), uint96(rate));
+                vm.prank(timelock);
+                strategy.setRewards(uint32(start), uint32(end), uint96(rate));
 
-            cash(rewards, address(strategy), totalRewards); // Rewards to be distributed
-        } else {
-            length = end - start;
-            (,, uint96 rate) = strategy.rewardsPerToken();
-            totalRewards = length * rate;
+                cash(rewards, address(strategy), totalRewards); // Rewards to be distributed
+            } else {
+                length = end - start;
+                (,, uint96 rate) = strategy.rewardsPerToken();
+                totalRewards = length * rate;
+            }
         }
     }
 }
 
 contract WithProgramTest is WithProgram {
 
-    function testProgramChange(uint32 start, uint32 end, uint96 rate) public skipRewardsPeriodStarted {
+    function testProgramChange(uint32 start, uint32 end, uint96 rate) public skipOnCI skipRewardsPeriodStarted {
         end = uint32(bound(end, block.timestamp + 1, type(uint32).max));
         start = uint32(bound(start, block.timestamp, end - 1));
 
@@ -221,14 +228,14 @@ contract WithProgramTest is WithProgram {
         strategy.setRewards(start, end, rate);
     }
 
-    function testDoesntUpdateRewardsPerToken() public skipRewardsPeriodStarted {
+    function testDoesntUpdateRewardsPerToken() public skipOnCI skipRewardsPeriodStarted {
         cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
         (uint128 accumulated,,) = strategy.rewardsPerToken();
         assertEq(accumulated, 0);
     }
 
-    function testDoesntUpdateUserRewards() public skipRewardsPeriodStarted {
+    function testDoesntUpdateUserRewards() public skipOnCI skipRewardsPeriodStarted {
         cash(IERC20(address(strategy.pool())), address(strategy), strategyUnit);
         strategy.mint(user);
         (uint128 accumulated,) = strategy.rewards(user);
@@ -237,21 +244,23 @@ contract WithProgramTest is WithProgram {
 }
 
 abstract contract DuringProgram is WithProgram {
-    function setUp() public override virtual {
+    function setUp() public skipOnCI override virtual {
         super.setUp();
 
-        // If period not started yet, warp to start
-        (uint256 start,) = strategy.rewardsPeriod();
-        if(block.timestamp < start) {
-            console2.log("Warping to start of rewards period");
-            vm.warp(start);
+        if (!ci) {
+            // If period not started yet, warp to start
+            (uint256 start,) = strategy.rewardsPeriod();
+            if(block.timestamp < start) {
+                console2.log("Warping to start of rewards period");
+                vm.warp(start);
+            }
         }
     }
 }
 
 contract DuringProgramTest is DuringProgram {
 
-    function dontChangeProgram(uint32 start, uint32 end, uint96 rate) public {
+    function dontChangeProgram(uint32 start, uint32 end, uint96 rate) public skipOnCI {
         end = uint32(bound(end, block.timestamp + 1, type(uint32).max));
         start = uint32(bound(start, block.timestamp, end - 1));
 
@@ -261,7 +270,7 @@ contract DuringProgramTest is DuringProgram {
     }
 
     // Warp somewhere in rewards period, mint, and check that rewardsPerToken is updated
-    function testUpdatesRewardsPerTokenOnMint(uint32 elapsed) public {
+    function testUpdatesRewardsPerTokenOnMint(uint32 elapsed) public skipOnCI {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
@@ -275,7 +284,7 @@ contract DuringProgramTest is DuringProgram {
     }
 
     // Warp somewhere in rewards period, burn, and check that rewardsPerToken is updated
-    function testUpdatesRewardsPerTokenOnBurn(uint32 elapsed) public {
+    function testUpdatesRewardsPerTokenOnBurn(uint32 elapsed) public skipOnCI {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
@@ -291,7 +300,7 @@ contract DuringProgramTest is DuringProgram {
     }
 
     // Warp somewhere in rewards period, transfer, and check that rewardsPerToken is updated
-    function testUpdatesRewardsPerTokenOnTransfer(uint32 elapsed) public {
+    function testUpdatesRewardsPerTokenOnTransfer(uint32 elapsed) public skipOnCI {
         uint256 totalSupply = strategy.totalSupply();
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
@@ -304,7 +313,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulated, uint256(rate) * elapsed * 1e18 / totalSupply); // accumulated is stored scaled up by 1e18
     }
 
-    function testUpdatesUserRewardsOnMint(uint32 elapsed, uint32 elapseAgain, uint128 mintAmount) public {
+    function testUpdatesUserRewardsOnMint(uint32 elapsed, uint32 elapseAgain, uint128 mintAmount) public skipOnCI {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
 
@@ -334,7 +343,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulatedUser, accumulatedUserStart + userBalance * (accumulatedPerTokenNow - accumulatedPerToken) / 1e18);
     }
 
-    function testUpdatesUserRewardsOnBurn(uint32 elapsed, uint32 elapseAgain, uint128 burnAmount) public {
+    function testUpdatesUserRewardsOnBurn(uint32 elapsed, uint32 elapseAgain, uint128 burnAmount) public skipOnCI {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
         uint256 userBalance = strategy.balanceOf(user);
@@ -364,7 +373,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulatedUser, accumulatedUserStart + userBalance * (accumulatedPerTokenNow - accumulatedPerToken) / 1e18);
     }
 
-    function testUpdatesUserRewardsOnTransfer(uint32 elapsed, uint32 elapseAgain, uint128 transferAmount) public {
+    function testUpdatesUserRewardsOnTransfer(uint32 elapsed, uint32 elapseAgain, uint128 transferAmount) public skipOnCI {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         elapsed = uint32(bound(elapsed, 0, end - start));
         uint256 userBalance = strategy.balanceOf(user);
@@ -395,7 +404,7 @@ contract DuringProgramTest is DuringProgram {
         assertEq(accumulatedOther, accumulatedOtherStart + otherBalance * (accumulatedPerTokenNow - accumulatedPerToken) / 1e18);
     }
 
-    function testClaim() public {
+    function testClaim() public skipOnCI {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         uint256 elapsed = end - (userMintTime >= start ? userMintTime : start);
         vm.warp(end);
@@ -415,7 +424,7 @@ contract DuringProgramTest is DuringProgram {
     }
 
 
-    function testRemit() public {
+    function testRemit() public skipOnCI {
         (uint32 start, uint32 end) = strategy.rewardsPeriod();
         uint256 elapsed = end - (userMintTime >= start ? userMintTime : start);
         vm.warp(end);
@@ -439,17 +448,19 @@ abstract contract AfterProgramEnd is WithProgram {
     function setUp() public override virtual {
         super.setUp();
 
-        // If rewards period active, warp to end
-        (, uint32 end) = strategy.rewardsPeriod();
-        if (end < block.timestamp) {
-            vm.warp(end + 1);
+        if (!ci) {
+            // If rewards period active, warp to end
+            (, uint32 end) = strategy.rewardsPeriod();
+            if (end < block.timestamp) {
+                vm.warp(end + 1);
+            }
         }
     }
 }
 
 contract AfterProgramEndTest is AfterProgramEnd {
 
-    function testSetNewRewards(uint32 start, uint32 end, uint96 rate) public {
+    function testSetNewRewards(uint32 start, uint32 end, uint96 rate) public skipOnCI {
         end = uint32(bound(end, block.timestamp + 1, type(uint32).max));
         start = uint32(bound(start, block.timestamp, end - 1));
 
@@ -467,7 +478,7 @@ contract AfterProgramEndTest is AfterProgramEnd {
         assertEq(rate_, rate);
     }
 
-    function testAccumulateNoMore() public {
+    function testAccumulateNoMore() public skipOnCI {
         // Warp to end and mint to update accumulators
         (, uint32 end) = strategy.rewardsPeriod();
         vm.warp(end);

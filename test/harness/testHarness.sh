@@ -6,6 +6,7 @@ STRATEGIES=(\
   0x7CEde4B5aC739677A0F677F1B0C9884355F2EdCb\ 
 )
 
+export CI=false
 export RPC="TENDERLY"
 export NETWORK="ARBITRUM"
 export MOCK=false
