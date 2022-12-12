@@ -390,7 +390,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 baseCached_ = baseCached;
         uint256 burnt = _balanceOf[address(this)];
         baseObtained = baseCached_ * burnt / _totalSupply;
-        baseCached -= baseObtained;
+        baseCached = baseCached_ - baseObtained;
 
         _burn(address(this), burnt);
         base.safeTransfer(to, baseObtained);
