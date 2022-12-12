@@ -121,7 +121,6 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function init(address to)
         external
         auth
-        isState(State.DEPLOYED)
         returns (uint256 minted)
     {
         minted = _init(to);
