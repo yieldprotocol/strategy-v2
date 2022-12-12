@@ -273,14 +273,18 @@ contract InvestedAfterMaturityTest is InvestedAfterMaturity {
     function testHarnessDivestAfterMaturity() public skipOnCI {
         console2.log("strategy.divest()");
 
-        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-        uint256 expectedFYToken =
-            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+        uint256 poolTokens = pool.balanceOf(address(strategy));
+        uint256 poolSupply = pool.totalSupply();
+
+        assertEq(baseToken.balanceOf(address(strategy)), 0);
+
+        uint256 expectedBase = poolTokens * pool.getBaseBalance() / poolSupply;
+        uint256 expectedFYToken = poolTokens * (pool.getFYTokenBalance() - poolSupply) / poolSupply;
 
         strategy.divest();
 
         assertEq(pool.balanceOf(address(strategy)), 0);
-        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
+        assertApproxEqRel(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 1e12); // 0.0001%, `getBaseBalance` is not exact
         assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
     } // --> Divested
 }

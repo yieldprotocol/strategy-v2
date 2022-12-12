@@ -1,17 +1,22 @@
 #!/bin/bash
 # Loop through the following addresses, and run the StrategyHarness.t.sol tests for each one.
-STRATEGIES=(\
-  0xe507E8f1366DE968Da91707306756A3DeF9C4d09\ 
-#  0x91e1e2CD17F0418a6b2079637898397a66026337\ 
-#  0x7CEde4B5aC739677A0F677F1B0C9884355F2EdCb\ 
+MAINNET_STRATEGIES=(\
+  0xF730Ed8cB07925279e6D1807886c690d352FF7B8\
+  0xA689fd1999775C16b9a912248187e4a7454a154a\
+  0xC468301Fe4395BFc7aDbacfd27c10760DB9B5a3f\
+  0xB53c25cbbc21379287e5e31426268958C2c68182\
+)
+
+ARBITRUM_STRATEGIES=(\
 )
 
 export CI=false
 export RPC="TENDERLY"
-export NETWORK="ARBITRUM"
+export NETWORK="MAINNET"
 export MOCK=false
 
-for strategy in ${STRATEGIES[@]}; do
-#  STRATEGY=$strategy forge test --match-path test/harness/RewardsHarness.t.sol
-  STRATEGY=$strategy forge test --match-path test/harness/StrategyHarness.t.sol
+for STRATEGY_ in ${MAINNET_STRATEGIES[@]}; do
+  echo $STRATEGY_
+  STRATEGY=$STRATEGY_ forge test --match-path test/harness/RewardsHarness.t.sol $1
+  STRATEGY=$STRATEGY_ forge test --match-path test/harness/StrategyHarness.t.sol $1
 done
