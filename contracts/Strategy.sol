@@ -4,15 +4,15 @@
 
 pragma solidity >=0.8.13;
 
-import {IStrategy} from "./interfaces/IStrategy.sol";
-import {StrategyMigrator} from "./StrategyMigrator.sol";
-import {AccessControl} from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import {SafeERC20Namer} from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import {MinimalTransferHelper} from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import {ERC20Rewards} from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
-import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import { IStrategy } from "./interfaces/IStrategy.sol";
+import { StrategyMigrator } from "./StrategyMigrator.sol";
+import { AccessControl } from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
+import { SafeERC20Namer } from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
+import { MinimalTransferHelper } from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import { ERC20Rewards } from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
+import { IFYToken } from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace
 /// pool tokens and receive strategy tokens that represent a stake in a YieldSpace pool contract.
@@ -89,6 +89,13 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         state = target;
     }
 
+    /// @dev State and state variable management
+    /// @param target State to transition to
+    function _transition(State target) internal {
+        require (target != State.INVESTED, "Must provide a pool");
+        _transition(target, IPool(address(0)));
+    }
+
     // ----------------------- INVEST & DIVEST --------------------------- //
 
     /// @notice Mock pool mint called by a strategy when trying to migrate.
@@ -103,8 +110,8 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         auth
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
-        baseIn = minted = _init(msg.sender);
         fyTokenIn = 0; // Silence compiler warning
+        baseIn = minted = _init(msg.sender);
     }
 
     /// @dev Mint the first strategy tokens, without investing
@@ -113,7 +120,6 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     function init(address to)
         external
         auth
-        isState(State.DEPLOYED)
         returns (uint256 minted)
     {
         minted = _init(to);
@@ -135,7 +141,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
         _mint(to, minted);
 
-        _transition(State.DIVESTED, IPool(address(0)));
+        _transition(State.DIVESTED);
     }
 
     /// @dev Start the strategy investments in the next pool
@@ -279,7 +285,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         // Transition to divested if done
         if (fyTokenCached_ == 0) {
             // Transition to Divested
-            _transition(State.DIVESTED, IPool(address(0)));
+            _transition(State.DIVESTED);
             emit Divested(address(0), 0, 0);
         }
 
@@ -301,7 +307,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         returns (uint256 baseIn)
     {
         require((baseCached = baseIn = base.balanceOf(address(this))) > 0, "No base to restart");
-        _transition(State.DIVESTED, IPool(address(0)));
+        _transition(State.DIVESTED);
         emit Divested(address(0), 0, 0);
     }
 
