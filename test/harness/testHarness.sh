@@ -18,6 +18,6 @@ export MOCK=false
 for STRATEGY_ in ${MAINNET_STRATEGIES[@]}; do
   echo $STRATEGY_
   STRATEGY=$STRATEGY_ forge test --match-path test/harness/OrchestrationHarness.t.sol $1
-#  STRATEGY=$STRATEGY_ forge test --match-path test/harness/RewardsHarness.t.sol $1
-#  STRATEGY=$STRATEGY_ forge test --match-path test/harness/StrategyHarness.t.sol $1
+  STRATEGY=$STRATEGY_ forge test --match-path test/harness/RewardsHarness.t.sol $1
+  STRATEGY=$STRATEGY_ forge test --match-path test/harness/StrategyHarness.t.sol $1
 done
