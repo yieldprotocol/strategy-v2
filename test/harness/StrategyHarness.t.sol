@@ -125,16 +125,16 @@ contract InvestedStateTest is InvestedState {
         assertGt(poolIn, 0);
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.cached();
+        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.poolCached();
 
         cash(pool, address(strategy), poolIn);
         uint256 minted = strategy.mint(bob);
 
         assertEq(minted, expected);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", poolIn, strategy.cached());
+        assertTrackPlusEq("poolCached", poolIn, strategy.poolCached());
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
@@ -148,16 +148,16 @@ contract InvestedStateTest is InvestedState {
         vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
 
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("bobPoolTokens", pool.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
-        uint256 poolExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
+        uint256 poolExpected = (burnAmount * strategy.poolCached()) / strategy.totalSupply();
 
         uint256 poolObtained = strategy.burn(bob);
 
         assertEq(poolObtained, poolExpected);
         assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
-        assertTrackMinusEq("cached", poolObtained, strategy.cached());
+        assertTrackMinusEq("poolCached", poolObtained, strategy.poolCached());
     }
 
     function testHarnessEjectAuthInvested() public skipOnCI {
@@ -206,9 +206,9 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
         track("aliceFYTokens", fyToken.balanceOf(alice));
         track("strategyFYToken", fyTokenAvailable);
-        assertEq(baseToken.balanceOf(address(strategy)), strategy.cached());
+        assertEq(baseToken.balanceOf(address(strategy)), strategy.baseCached());
         track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         // initial buy - half of ejected fyToken balance
         uint initialBuy = fyTokenAvailable / 2;
@@ -219,7 +219,7 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
         assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("cached", initialBuy, strategy.cached());
+        assertTrackPlusEq("baseCached", initialBuy, strategy.baseCached());
 
         // second buy - transfer in double the remaining fyToken and expect refund of base
         track("bobBaseTokens", baseToken.balanceOf(address(bob)));
@@ -236,7 +236,7 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
         assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
-        assertTrackPlusEq("cached", fyTokenAvailable, strategy.cached());
+        assertTrackPlusEq("baseCached", fyTokenAvailable, strategy.baseCached());
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -255,7 +255,7 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         strategy.restart();
 
         // Test we are now divested
-        assertEq(strategy.cached(), restartAmount);
+        assertEq(strategy.baseCached(), restartAmount);
         assertEq(uint256(strategy.state()), 1);
     } // --> Divested
 }
@@ -273,15 +273,19 @@ contract InvestedAfterMaturityTest is InvestedAfterMaturity {
     function testHarnessDivestAfterMaturity() public skipOnCI {
         console2.log("strategy.divest()");
 
-        uint256 expectedBase = pool.balanceOf(address(strategy)) * pool.getBaseBalance() / pool.totalSupply();
-        uint256 expectedFYToken =
-            pool.balanceOf(address(strategy)) * (pool.getFYTokenBalance() - pool.totalSupply()) / pool.totalSupply();
+        uint256 poolTokens = pool.balanceOf(address(strategy));
+        uint256 poolSupply = pool.totalSupply();
+
+        assertEq(baseToken.balanceOf(address(strategy)), 0);
+
+        uint256 expectedBase = poolTokens * pool.getBaseBalance() / poolSupply;
+        uint256 expectedFYToken = poolTokens * (pool.getFYTokenBalance() - poolSupply) / poolSupply;
 
         strategy.divest();
 
         assertEq(pool.balanceOf(address(strategy)), 0);
-        assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertApproxEqRel(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 1e12); // 0.0001%, `getBaseBalance` is not exact
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
     } // --> Divested
 }
 
@@ -305,31 +309,31 @@ contract DivestedStateTest is DivestedState {
 
     function testHarnessMintDivested() public skipOnCI {
         console2.log("strategy.mint()");
-        uint256 baseIn = strategy.cached() / 1000;
-        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cached();
+        uint256 baseIn = strategy.baseCached() / 1000;
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.baseCached();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         cash(baseToken, address(strategy), baseIn);
         uint256 minted = strategy.mintDivested(bob);
 
         assertEq(minted, expectedMinted);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", baseIn, strategy.cached());
+        assertTrackPlusEq("baseCached", baseIn, strategy.baseCached());
     }
 
     function testHarnessBurnDivested() public skipOnCI {
         console2.log("strategy.burn()");
         // Let's get some tokens
-        uint256 baseIn = strategy.cached() / 1000;
+        uint256 baseIn = strategy.baseCached() / 1000;
         cash(baseToken, address(strategy), baseIn);
         uint256 minted = strategy.mintDivested(bob);
 
         uint256 burnAmount = minted / 2;
         vm.prank(bob);
         strategy.transfer(address(strategy), burnAmount);
-        uint256 expectedBaseObtained = burnAmount * strategy.cached() / strategy.totalSupply();
+        uint256 expectedBaseObtained = burnAmount * strategy.baseCached() / strategy.totalSupply();
         assertGt(burnAmount, 0);
 
         track("aliceBaseTokens", baseToken.balanceOf(alice));

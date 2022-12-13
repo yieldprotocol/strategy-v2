@@ -87,7 +87,7 @@ contract DeployedStateTest is DeployedState {
         strategy.init(bob);
 
         // Test the strategy can add the dstStrategy as the next pool
-        assertEq(strategy.cached(), initAmount);
+        assertEq(strategy.baseCached(), initAmount);
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
         assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
         assertEq(uint256(strategy.state()), 1);
@@ -140,18 +140,18 @@ contract DivestedStateTest is DivestedState {
 
     function testMintDivested() public {
         console2.log("strategy.mint()");
-        uint256 baseIn = strategy.cached() / 1000;
-        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cached();
+        uint256 baseIn = strategy.baseCached() / 1000;
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.baseCached();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         cash(baseToken, address(strategy), baseIn);
         uint256 minted = strategy.mintDivested(bob);
 
         assertEq(minted, expectedMinted);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", baseIn, strategy.cached());
+        assertTrackPlusEq("baseCached", baseIn, strategy.baseCached());
     }
 
     function testBurnDivested() public {
@@ -234,16 +234,16 @@ contract InvestedStateTest is InvestedState {
         assertGt(poolIn, 0);
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.cached();
+        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.poolCached();
 
         cash(pool, address(strategy), poolIn);
         uint256 minted = strategy.mint(bob);
 
         assertEq(minted, expected);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", poolIn, strategy.cached());
+        assertTrackPlusEq("poolCached", poolIn, strategy.poolCached());
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
@@ -256,16 +256,16 @@ contract InvestedStateTest is InvestedState {
         vm.prank(hole);
         strategy.transfer(address(strategy), burnAmount);
 
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("bobPoolTokens", pool.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
-        uint256 poolExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
+        uint256 poolExpected = (burnAmount * strategy.poolCached()) / strategy.totalSupply();
 
         uint256 poolObtained = strategy.burn(bob);
 
         assertEq(poolObtained, poolExpected);
         assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
-        assertTrackMinusEq("cached", poolObtained, strategy.cached());
+        assertTrackMinusEq("poolCached", poolObtained, strategy.poolCached());
     }
 
     function testEjectAuth() public {
@@ -286,7 +286,7 @@ contract InvestedStateTest is InvestedState {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
         assertEq(fyToken.balanceOf(address(strategy)), 0);
         assertEq(strategy.fyTokenCached(), 0);
 
@@ -320,7 +320,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
     function testEjectTiltedToDrained() public {
         console2.log("strategy.eject()");
 
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
         track("bobBaseTokens", baseToken.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
 
@@ -335,7 +335,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         (uint256 baseObtained, uint256 fyTokenObtained) = strategy.eject();
 
         assertEq(pool.balanceOf(alice), poolExpected);
-        assertEq(strategy.cached(), 0);
+        assertEq(strategy.baseCached(), 0);
         assertEq(strategy.fyTokenCached(), 0);
         assertEq(uint256(strategy.state()), 4);
     }
@@ -351,7 +351,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
         assertEq(fyToken.balanceOf(address(strategy)), expectedFYToken);
         assertEq(strategy.fyTokenCached(), fyToken.balanceOf(address(strategy)));
 
@@ -381,9 +381,9 @@ contract TestEjected is EjectedState {
         uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
         track("aliceFYTokens", fyToken.balanceOf(alice));
         track("strategyFYToken", fyTokenAvailable);
-        assertEq(baseToken.balanceOf(address(strategy)), strategy.cached());
+        assertEq(baseToken.balanceOf(address(strategy)), strategy.baseCached());
         track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         // initial buy - half of ejected fyToken balance
         uint initialBuy = fyTokenAvailable / 2;
@@ -394,7 +394,7 @@ contract TestEjected is EjectedState {
         assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
         assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("cached", initialBuy, strategy.cached());
+        assertTrackPlusEq("baseCached", initialBuy, strategy.baseCached());
 
         // second buy - transfer in double the remaining fyToken and expect refund of base
         track("bobBaseTokens", baseToken.balanceOf(address(bob)));
@@ -411,7 +411,7 @@ contract TestEjected is EjectedState {
         assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
         assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
-        assertTrackPlusEq("cached", fyTokenAvailable, strategy.cached());
+        // assertTrackPlusEq("baseCached", fyTokenAvailable, strategy.baseCached());
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -456,7 +456,7 @@ contract TestDrained is DrainedState {
         strategy.restart();
 
         // Test we are now divested
-        assertEq(strategy.cached(), restartAmount);
+        assertEq(strategy.baseCached(), restartAmount);
         assertEq(uint256(strategy.state()), 1);
     } // --> Divested
 }
@@ -478,7 +478,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -509,7 +509,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
     } // --> Ejected
 }
 
