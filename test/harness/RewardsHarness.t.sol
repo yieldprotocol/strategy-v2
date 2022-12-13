@@ -42,7 +42,7 @@ abstract contract Deployed is Test, TestExtensions, TestConstants {
 
     function setUp() public virtual {
         if (!(ci = vm.envOr(CI, true))) {
-            string memory rpc = vm.envOr(RPC, TENDERLY);
+            string memory rpc = vm.envOr(RPC, HARNESS);
             vm.createSelectFork(rpc);
 
             string memory network = vm.envOr(NETWORK, MAINNET);
