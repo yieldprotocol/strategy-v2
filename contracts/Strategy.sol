@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Audit of commit 6bb7c7f at https://hackmd.io/@devtooligan/YieldStrategyV2Review2022-12-07
-// Fixes not applied, do not use in production.
+// Fixes applied until commit b8cf757, review pending.
 
 pragma solidity >=0.8.13;
 
