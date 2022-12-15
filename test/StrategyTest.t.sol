@@ -110,10 +110,10 @@ contract DeployedStateTest is DeployedState {
     }
 
     function testBurnPoolTokensNotForYou() public {
-        console2.log("strategy._burnPoolTokens()");
+        console2.log("strategy.burnPoolTokens()");
 
         vm.expectRevert(bytes("Unauthorized"));
-        strategy._burnPoolTokens(pool, 0);
+        strategy.burnPoolTokens(pool, 0);
     }
 }
 

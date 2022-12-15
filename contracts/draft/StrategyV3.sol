@@ -298,7 +298,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         uint256 poolBalance = pool_.balanceOf(address(this));
 
         // Burn lpTokens, if not possible, eject the pool tokens out. Slippage should be managed by the caller.
-        try this._burnPoolTokens(pool_, poolBalance) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
+        try this.burnPoolTokens(pool_, poolBalance) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
             baseReceived = baseReceived_;
             fyTokenReceived = fyTokenReceived_;
             if (fyTokenReceived == 0) {
@@ -543,7 +543,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     /// @param poolTokens Amount of tokens to burn.
     /// @return baseReceived Amount of base tokens received from pool tokens
     /// @return fyTokenReceived Amount of fyToken received from pool tokens
-    function _burnPoolTokens(IPool pool_, uint256 poolTokens)
+    function burnPoolTokens(IPool pool_, uint256 poolTokens)
         external
         returns (uint256 baseReceived, uint256 fyTokenReceived)
     {

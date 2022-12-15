@@ -225,7 +225,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // Burn lpTokens, if not possible, eject the pool tokens out. Slippage should be managed by the caller.
         delete poolCached;
-        try this._burnPoolTokens(pool_, toDivest) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
+        try this.burnPoolTokens(pool_, toDivest) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
             baseCached = baseReceived = baseReceived_;
             fyTokenCached = fyTokenReceived = fyTokenReceived_;
             if (fyTokenReceived > 0) {
@@ -249,7 +249,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     /// @param poolTokens Amount of tokens to burn.
     /// @return baseReceived Amount of base tokens received from pool tokens
     /// @return fyTokenReceived Amount of fyToken received from pool tokens
-    function _burnPoolTokens(IPool pool_, uint256 poolTokens)
+    function burnPoolTokens(IPool pool_, uint256 poolTokens)
         external
         returns (uint256 baseReceived, uint256 fyTokenReceived)
     {
