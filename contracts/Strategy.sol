@@ -257,7 +257,11 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
 
         // Burn lpTokens
         pool_.safeTransfer(address(pool_), poolTokens);
+        uint256 baseBalance = base.balanceOf(address(this));
+        uint256 fyTokenBalance = fyToken.balanceOf(address(this));
         (, baseReceived, fyTokenReceived) = pool_.burn(address(this), address(this), 0, type(uint256).max);
+        require(base.balanceOf(address(this)) - baseBalance == baseReceived, "Burn failed - base");
+        require(fyToken.balanceOf(address(this)) - fyTokenBalance == fyTokenReceived, "Burn failed - fyToken");
     }
 
     /// @dev Buy ejected fyToken in the strategy at face value
