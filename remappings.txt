@@ -1,4 +1,4 @@
-forge-std/=lib/forge-std/src/
+forge-std/=lib/vault-v2/packages/foundry/lib/forge-std/src/
 lib/yield-utils-v2=lib/vault-v2/packages/foundry/lib/yield-utils-v2
 lib/yieldspace-tv=lib/vault-v2/packages/foundry/lib/yieldspace-tv
 @yield-protocol/utils-v2=lib/vault-v2/packages/foundry/lib/yield-utils-v2
