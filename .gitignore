@@ -10,9 +10,7 @@
 package/
 
 # Secret files
-.etherscanKey
-.infuraKey
-.mythxKey
+.*Key
 .secret
 .env
 
