@@ -1,3 +1,6 @@
-@yield-protocol/utils-v2=lib/yield-utils-v2
+forge-std/=lib/vault-v2/packages/foundry/lib/forge-std/src/
+lib/yield-utils-v2=lib/vault-v2/packages/foundry/lib/yield-utils-v2
+lib/yieldspace-tv=lib/vault-v2/packages/foundry/lib/yieldspace-tv
+@yield-protocol/utils-v2=lib/vault-v2/packages/foundry/lib/yield-utils-v2
+@yield-protocol/yieldspace-tv=lib/vault-v2/packages/foundry/lib/yieldspace-tv
 @yield-protocol/vault-v2=lib/vault-v2/packages/foundry
-@yield-protocol/yieldspace-tv=lib/yieldspace-tv

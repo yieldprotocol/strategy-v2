@@ -20,4 +20,4 @@ jobs:
           version: nightly
 
       - name: Run tests
-        run: forge test -vvv
+        run: MAINNET_RPC=${{ secrets.MAINNET_RPC }} ARBITRUM_RPC=${{ secrets.ARBITRUM_RPC }} forge test -vvv

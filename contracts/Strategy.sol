@@ -1,283 +1,407 @@
 // SPDX-License-Identifier: BUSL-1.1
+// Audit of commit 9e6a33d at https://hackmd.io/7YB8QorOSs-nAAaz_f8EbQ
+
 pragma solidity >=0.8.13;
 
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import { IStrategy } from "./interfaces/IStrategy.sol";
+import { StrategyMigrator } from "./StrategyMigrator.sol";
+import { AccessControl } from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
+import { SafeERC20Namer } from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
+import { MinimalTransferHelper } from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import { ERC20Rewards } from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
+import { IFYToken } from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
-
-library DivUp {
-    /// @dev Divide a between b, rounding up
-    function divUp(uint256 a, uint256 b) internal pure returns(uint256 c) {
-        // % 0 panics even inside the unchecked, and so prevents / 0 afterwards
-        // https://docs.soliditylang.org/en/v0.8.9/types.html
-        unchecked { a % b == 0 ? c = a / b : c = a / b + 1; }
-    }
-}
-
-/// @dev The Pool contract exchanges base for fyToken at a price defined by a specific formula.
-contract Strategy is AccessControl, ERC20Rewards {
-    using DivUp for uint256;
+/// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace
+/// pool tokens and receive strategy tokens that represent a stake in a YieldSpace pool contract.
+/// Upon maturity, the strategy can `divest` from the mature pool, becoming a proportional
+/// ownership underlying vault. When not invested, the strategy can `invest` into a Pool using
+/// all its underlying.
+/// The strategy can also `eject` from a Pool before maturity. Any fyToken obtained will be available
+/// to be bought by anyone at face value. If the pool tokens can't be burned, they will be ejected
+/// and the strategy can be recapitalized.
+contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
+    enum State {DEPLOYED, DIVESTED, INVESTED, EJECTED, DRAINED}
     using MinimalTransferHelper for IERC20;
-    using CastU256U128 for uint256; // Inherited from ERC20Rewards
-    using CastU256I128 for uint256;
-    using CastU128I128 for uint128;
+    using MinimalTransferHelper for IFYToken;
+    using MinimalTransferHelper for IPool;
 
-    event YieldSet(ILadle ladle, ICauldron cauldron);
-    event TokenJoinReset(address join);
-    event TokenIdSet(bytes6 id);
-    event NextPoolSet(IPool indexed pool, bytes6 indexed seriesId);
-    event PoolEnded(address pool);
-    event PoolStarted(address pool);
+    event Invested(address indexed pool, uint256 baseInvested, uint256 lpTokensObtained);
+    event Divested(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained);
+    event Ejected(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained, uint256 fyTokenObtained);
+    event Drained(address indexed pool, uint256 lpTokenDivested);
+    event SoldFYToken(uint256 soldFYToken, uint256 returnedBase);
 
-    IERC20 public immutable base;                // Base token for this strategy
-    bytes6 public baseId;                        // Identifier for the base token in Yieldv2
-    address public baseJoin;                     // Yield v2 Join to deposit token when borrowing
-    ILadle public ladle;                         // Gateway to the Yield v2 Collateralized Debt Engine
-    ICauldron public cauldron;                   // Accounts in the Yield v2 Collateralized Debt Engine
+    State public state;                          // The state determines which functions are available
 
+    // IERC20 public immutable base;             // Base token for this strategy (inherited from StrategyMigrator)
+    // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
     IPool public pool;                           // Current pool that this strategy invests in
-    bytes6 public seriesId;                      // SeriesId for the current pool in Yield v2
-    IFYToken public fyToken;                     // Current fyToken for this strategy
 
-    IPool public nextPool;                       // Next pool that this strategy will invest in
-    bytes6 public nextSeriesId;                  // SeriesId for the next pool in Yield v2
+    uint256 public baseCached;                   // Base tokens held by the strategy
+    uint256 public poolCached;                   // Pool tokens held by the strategy
+    uint256 public fyTokenCached;                // In emergencies, the strategy can keep fyToken
 
-    uint256 public cached;                       // LP tokens owned by the strategy after the last operation
+    constructor(string memory name_, string memory symbol_, IFYToken fyToken_)
+        ERC20Rewards(name_, symbol_, SafeERC20Namer.tokenDecimals(address(fyToken_)))
+        StrategyMigrator(
+            IERC20(fyToken_.underlying()),
+            fyToken_)
+    {
+        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
+        // Deploy with any series matching the desired base in any other case
+        fyToken = fyToken_;
 
-    constructor(string memory name, string memory symbol, ILadle ladle_, IERC20 base_, bytes6 baseId_,address baseJoin_)
-        ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(base_)))
-    { // The strategy asset inherits the decimals of its base, that matches the decimals of the fyToken and pool
+        base = IERC20(fyToken_.underlying());
 
-        base = base_;
-        baseId = baseId_;
-        baseJoin = baseJoin_;
-
-        ladle = ladle_;
-        cauldron = ladle_.cauldron();
+        _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
     }
 
-    modifier poolSelected() {
+    modifier isState(State target) {
         require (
-            pool != IPool(address(0)),
-            "Pool not selected"
+            target == state,
+            "Not allowed in this state"
         );
         _;
     }
 
-    modifier poolNotSelected() {
-        require (
-            pool == IPool(address(0)),
-            "Pool selected"
-        );
-        _;
+    /// @dev State and state variable management
+    /// @param target State to transition to
+    /// @param pool_ If transitioning to invested, update pool state variable with this parameter
+    function _transition(State target, IPool pool_) internal {
+        if (target == State.INVESTED) {
+            pool = pool_;
+            fyToken = IFYToken(address(pool_.fyToken()));
+            maturity = pool_.maturity();
+        } else if (target == State.DIVESTED) {
+            delete fyToken;
+            delete maturity;
+            delete pool;
+        } else if (target == State.EJECTED) {
+            delete maturity;
+            delete pool;
+        } else if (target == State.DRAINED) {
+            delete maturity;
+            delete pool;
+        }
+        state = target;
     }
 
-    modifier afterMaturity() {
-        require (
-            uint32(block.timestamp) >= fyToken.maturity(),
-            "Only after maturity"
-        );
-        _;
+    /// @dev State and state variable management
+    /// @param target State to transition to
+    function _transition(State target) internal {
+        require (target != State.INVESTED, "Must provide a pool");
+        _transition(target, IPool(address(0)));
     }
 
-    /// @dev Set a new Ladle and Cauldron
-    /// @notice Use with extreme caution, only for Ladle replacements
-    function setYield(ILadle ladle_)
+    // ----------------------- INVEST & DIVEST --------------------------- //
+
+    /// @notice Mock pool mint called by a strategy when trying to migrate.
+    /// @dev Will initialize the strategy and return strategy tokens.
+    /// It is expected that base has been transferred in, but no fyTokens
+    /// @return baseIn Amount of base tokens found in contract
+    /// @return fyTokenIn This is always returned as 0 since they aren't used
+    /// @return minted Amount of strategy tokens minted from base tokens which is the same as baseIn
+    function mint(address, address, uint256, uint256)
         external
-        poolNotSelected
+        override
         auth
+        returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
     {
-        ladle = ladle_;
-        ICauldron cauldron_ = ladle_.cauldron();
-        cauldron = cauldron_;
-        emit YieldSet(ladle_, cauldron_);
+        fyTokenIn = 0; // Silence compiler warning
+        baseIn = minted = _init(msg.sender);
     }
 
-    /// @dev Set a new base token id
-    /// @notice Use with extreme caution, only for token reconfigurations in Cauldron
-    function setTokenId(bytes6 baseId_)
-        external
-        poolNotSelected
-        auth
-    {
-        require(
-            ladle.cauldron().assets(baseId_) == address(base),
-            "Mismatched baseId"
-        );
-        baseId = baseId_;
-        emit TokenIdSet(baseId_);
-    }
-
-    /// @dev Reset the base token join
-    /// @notice Use with extreme caution, only for Join replacements
-    function resetTokenJoin()
-        external
-        poolNotSelected
-        auth
-    {
-        baseJoin = address(ladle.joins(baseId));
-        emit TokenJoinReset(baseJoin);
-    }
-
-    /// @dev Set the next pool to invest in
-    function setNextPool(IPool pool_, bytes6 seriesId_)
+    /// @dev Mint the first strategy tokens, without investing
+    /// @param to Recipient for the strategy tokens
+    /// @return minted Amount of strategy tokens minted from base tokens
+    function init(address to)
         external
         auth
+        returns (uint256 minted)
     {
-        require(
-            base == pool_.base(),
-            "Mismatched base"
-        );
-        DataTypes.Series memory series = cauldron.series(seriesId_);
-        require(
-            address(series.fyToken) == address(pool_.fyToken()),
-            "Mismatched seriesId"
-        );
+        minted = _init(to);
+    }
 
-        nextPool = pool_;
-        nextSeriesId = seriesId_;
+    /// @dev Mint the first strategy tokens, without investing
+    /// @param to Recipient for the strategy tokens
+    /// @return minted Amount of strategy tokens minted from base tokens
+    function _init(address to)
+        internal
+        isState(State.DEPLOYED)
+        returns (uint256 minted)
+    {
+        // Clear fyToken in case we initialized through `mint`
+        delete fyToken;
 
-        emit NextPoolSet(pool_, seriesId_);
+        baseCached = minted = base.balanceOf(address(this));
+        require (minted > 0, "Not enough base in");
+        // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
+        _mint(to, minted);
+
+        _transition(State.DIVESTED);
     }
 
     /// @dev Start the strategy investments in the next pool
-    /// @param minRatio Minimum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
-    /// @param maxRatio Maximum allowed ratio between the reserves of the next pool, as a fixed point number with 18 decimals (base/fyToken)
+    /// @param pool_ Pool to invest into
+    /// @return poolTokensObtained Amount of pool tokens minted from base tokens
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.
-    function startPool(uint256 minRatio, uint256 maxRatio)
+    function invest(IPool pool_)
         external
         auth
-        poolNotSelected
+        isState(State.DIVESTED)
+        returns (uint256 poolTokensObtained)
     {
-        IPool nextPool_ = nextPool;
-        require(nextPool_ != IPool(address(0)), "Next pool not set");
-
         // Caching
-        IPool pool_ = nextPool_;
         IFYToken fyToken_ = IFYToken(address(pool_.fyToken()));
-        bytes6 seriesId_ = nextSeriesId;
+        uint256 baseCached_ = baseCached; // We could read the real balance, but this is a bit safer
 
-        pool = pool_;
+        require(base == pool_.base(), "Mismatched base");
+
+        // Mint LP tokens and initialize the pool
+        delete baseCached;
+        base.safeTransfer(address(pool_), baseCached_);
+        (,, poolTokensObtained) = pool_.init(address(this));
+        poolCached = poolTokensObtained;
+
+        // Update state variables
         fyToken = fyToken_;
-        seriesId = seriesId_;
+        maturity = pool_.maturity();
+        pool = pool_;
 
-        delete nextPool;
-        delete nextSeriesId;
-
-        // Find pool proportion p = tokenReserves/(tokenReserves + fyTokenReserves)
-        // Deposit (investment * p) base to borrow (investment * p) fyToken
-        //   (investment * p) fyToken + (investment * (1 - p)) base = investment
-        //   (investment * p) / ((investment * p) + (investment * (1 - p))) = p
-        //   (investment * (1 - p)) / ((investment * p) + (investment * (1 - p))) = 1 - p
-
-        uint256 baseBalance = base.balanceOf(address(this));
-        require(baseBalance > 0, "No funds to start with");
-
-        // The Pool mints based on cached values, not actual ones. Consider bundling a `pool.sync`
-        // call if they differ. A griefing attack exists by donating one fyToken wei to the pool
-        // before `startPool`, solved the same way.
-        uint256 baseInPool = base.balanceOf(address(pool_));
-        uint256 fyTokenInPool = fyToken_.balanceOf(address(pool_));
-
-        uint256 baseToPool = (baseBalance * baseInPool).divUp(baseInPool + fyTokenInPool);  // Rounds up
-        uint256 fyTokenToPool = baseBalance - baseToPool;        // fyTokenToPool is rounded down
-
-        // Mint fyToken with underlying
-        base.safeTransfer(baseJoin, fyTokenToPool);
-        fyToken.mintWithUnderlying(address(pool_), fyTokenToPool);
-
-        // Mint LP tokens with (investment * p) fyToken and (investment * (1 - p)) base
-        base.safeTransfer(address(pool_), baseToPool);
-        (,, cached) = pool_.mint(address(this), address(this), minRatio, maxRatio);
-
-        if (_totalSupply == 0) _mint(msg.sender, cached); // Initialize the strategy if needed
-
-        emit PoolStarted(address(pool_));
+        _transition(State.INVESTED, pool_);
+        emit Invested(address(pool_), baseCached_, poolTokensObtained);
     }
 
     /// @dev Divest out of a pool once it has matured
-    function endPool()
+    /// @return baseObtained Amount of base tokens obtained from burning pool tokens   
+    function divest()
         external
-        afterMaturity
+        isState(State.INVESTED)
+        returns (uint256 baseObtained)
     {
         // Caching
         IPool pool_ = pool;
         IFYToken fyToken_ = fyToken;
+        require (uint32(block.timestamp) >= maturity, "Only after maturity");
 
         uint256 toDivest = pool_.balanceOf(address(this));
 
         // Burn lpTokens
-        IERC20(address(pool_)).safeTransfer(address(pool_), toDivest);
-        (,, uint256 fyTokenDivested) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
+        delete poolCached;
+        pool_.safeTransfer(address(pool_), toDivest);
+        (, uint256 baseFromBurn, uint256 fyTokenFromBurn) = pool_.burn(address(this), address(this), 0, type(uint256).max); // We don't care about slippage, because the strategy holds to maturity
 
         // Redeem any fyToken
-        IERC20(address(fyToken_)).safeTransfer(address(fyToken_), fyTokenDivested);
-        fyToken_.redeem(address(this), fyTokenDivested);
+        uint256 baseFromRedeem = fyToken_.redeem(address(this), fyTokenFromBurn);
 
-        emit PoolEnded(address(pool_));
+        // Reset the base cache
+        baseCached = base.balanceOf(address(this));
 
-        // Clear up
-        delete pool;
-        delete fyToken;
-        delete seriesId;
-        delete cached;
+        // Transition to Divested
+        _transition(State.DIVESTED, pool_);
+        emit Divested(address(pool_), toDivest, baseObtained = baseFromBurn + baseFromRedeem);
     }
 
-    /// @dev Mint strategy tokens.
-    /// @notice The lp tokens that the user contributes need to have been transferred previously, using a batchable router.
+    // ----------------------- EJECT --------------------------- //
+
+    /// @dev Divest out of a pool at any time. If possible the pool tokens will be burnt for base and fyToken, the latter of which
+    /// must be sold to return the strategy to a functional state. If the pool token burn reverts, the pool tokens will be transferred
+    /// to the caller as a last resort.
+    /// @return baseReceived Amount of base tokens received from pool tokens
+    /// @return fyTokenReceived Amount of fyToken received from pool tokens
+    /// @notice The caller must take care of slippage when selling fyToken, if relevant.
+    function eject()
+        external
+        auth
+        isState(State.INVESTED)
+        returns (uint256 baseReceived, uint256 fyTokenReceived)
+    {
+        // Caching
+        IPool pool_ = pool;
+        uint256 toDivest = pool_.balanceOf(address(this));
+
+        // Burn lpTokens, if not possible, eject the pool tokens out. Slippage should be managed by the caller.
+        delete poolCached;
+        try this.burnPoolTokens(pool_, toDivest) returns (uint256 baseReceived_, uint256 fyTokenReceived_) {
+            baseCached = baseReceived = baseReceived_;
+            fyTokenCached = fyTokenReceived = fyTokenReceived_;
+            if (fyTokenReceived > 0) {
+                _transition(State.EJECTED, pool_);
+                emit Ejected(address(pool_), toDivest, baseReceived, fyTokenReceived);
+            } else {
+                _transition(State.DIVESTED, pool_);
+                emit Divested(address(pool_), toDivest, baseReceived);
+            }
+
+        } catch {
+            pool_.safeTransfer(msg.sender, toDivest);
+            _transition(State.DRAINED, pool_);
+            emit Drained(address(pool_), toDivest);
+        }
+    }
+
+    /// @dev Burn an amount of pool tokens.
+    /// @notice Only the Strategy itself can call this function. It is external and exists so that the transfer is reverted if the burn also reverts.
+    /// @param pool_ Pool for the pool tokens.
+    /// @param poolTokens Amount of tokens to burn.
+    /// @return baseReceived Amount of base tokens received from pool tokens
+    /// @return fyTokenReceived Amount of fyToken received from pool tokens
+    function burnPoolTokens(IPool pool_, uint256 poolTokens)
+        external
+        returns (uint256 baseReceived, uint256 fyTokenReceived)
+    {
+        require (msg.sender ==  address(this), "Unauthorized");
+
+        // Burn lpTokens
+        pool_.safeTransfer(address(pool_), poolTokens);
+        uint256 baseBalance = base.balanceOf(address(this));
+        uint256 fyTokenBalance = fyToken.balanceOf(address(this));
+        (, baseReceived, fyTokenReceived) = pool_.burn(address(this), address(this), 0, type(uint256).max);
+        require(base.balanceOf(address(this)) - baseBalance == baseReceived, "Burn failed - base");
+        require(fyToken.balanceOf(address(this)) - fyTokenBalance == fyTokenReceived, "Burn failed - fyToken");
+    }
+
+    /// @dev Buy ejected fyToken in the strategy at face value
+    /// @param fyTokenTo Address to send the purchased fyToken to.
+    /// @param baseTo Address to send any remaining base to.
+    /// @return soldFYToken Amount of fyToken sold.
+    /// @return returnedBase Amount of base unused and returned.
+    function buyFYToken(address fyTokenTo, address baseTo)
+        external
+        isState(State.EJECTED)
+        returns (uint256 soldFYToken, uint256 returnedBase)
+    {
+        // Caching
+        IFYToken fyToken_ = fyToken;
+        uint256 baseCached_ = baseCached;
+        uint256 fyTokenCached_ = fyTokenCached;
+
+        uint256 baseIn = base.balanceOf(address(this)) - baseCached_;
+        (soldFYToken, returnedBase) = baseIn > fyTokenCached_ ? (fyTokenCached_, baseIn - fyTokenCached_) : (baseIn, 0);
+
+        // Update base and fyToken cache
+        baseCached = baseCached_ + soldFYToken; // soldFYToken is base not returned
+        fyTokenCached = fyTokenCached_ -= soldFYToken;
+
+        // Transition to divested if done
+        if (fyTokenCached_ == 0) {
+            // Transition to Divested
+            _transition(State.DIVESTED);
+            emit Divested(address(0), 0, 0);
+        }
+
+        // Transfer fyToken and base (if surplus)
+        fyToken_.safeTransfer(fyTokenTo, soldFYToken);
+        if (soldFYToken < baseIn) {
+            base.safeTransfer(baseTo, baseIn - soldFYToken);
+        }
+
+        emit SoldFYToken(soldFYToken, returnedBase);
+    }
+
+    /// @dev If we drained the strategy, we can recapitalize it with base to avoid a forced migration
+    /// @return baseIn Amount of base tokens used to restart
+    function restart()
+        external
+        auth
+        isState(State.DRAINED)
+        returns (uint256 baseIn)
+    {
+        require((baseCached = baseIn = base.balanceOf(address(this))) > 0, "No base to restart");
+        _transition(State.DIVESTED);
+        emit Divested(address(0), 0, 0);
+    }
+
+    // ----------------------- MINT & BURN --------------------------- //
+
+    /// @dev Mint strategy tokens with pool tokens. It can be called only when invested.
+    /// @param to Recipient for the strategy tokens
+    /// @return minted Amount of strategy tokens minted
+    /// @notice The pool tokens that the user contributes need to have been transferred previously, using a batchable router.
     function mint(address to)
         external
-        poolSelected
+        isState(State.INVESTED)
+        returns (uint256 minted)
+    {
+        // Caching
+        IPool pool_ = pool;
+        uint256 poolCached_ = poolCached;
+
+        // minted = supply * value(deposit) / value(strategy)
+
+        // Find how much was deposited
+        uint256 deposit = pool_.balanceOf(address(this)) - poolCached_;
+
+        // Update the pool cache
+        poolCached = poolCached_ + deposit;
+
+        // Mint strategy tokens
+        minted = _totalSupply * deposit / poolCached_;
+        _mint(to, minted);
+    }
+
+    /// @dev Burn strategy tokens to withdraw pool tokens. It can be called only when invested.
+    /// @param to Recipient for the pool tokens
+    /// @return poolTokensObtained Amount of pool tokens obtained
+    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
+    function burn(address to)
+        external
+        isState(State.INVESTED)
+        returns (uint256 poolTokensObtained)
+    {
+        // Caching
+        IPool pool_ = pool;
+        uint256 poolCached_ = poolCached;
+        uint256 totalSupply_ = _totalSupply;
+
+        // Burn strategy tokens
+        uint256 burnt = _balanceOf[address(this)];
+        _burn(address(this), burnt);
+
+        poolTokensObtained = pool.balanceOf(address(this)) * burnt / totalSupply_;
+        pool_.safeTransfer(address(to), poolTokensObtained);
+
+        // Update pool cache
+        poolCached = poolCached_ - poolTokensObtained;
+    }
+
+    /// @dev Mint strategy tokens with base tokens. It can be called only when not invested and not ejected.
+    /// @param to Recipient for the strategy tokens
+    /// @return minted Amount of strategy tokens minted
+    /// @notice The base tokens that the user invests need to have been transferred previously, using a batchable router.
+    function mintDivested(address to)
+        external
+        isState(State.DIVESTED)
         returns (uint256 minted)
     {
         // minted = supply * value(deposit) / value(strategy)
-        uint256 cached_ = cached;
-        uint256 deposit = pool.balanceOf(address(this)) - cached_;
-        minted = _totalSupply * deposit / cached_;
-        cached = cached_ + deposit;
+        uint256 baseCached_ = baseCached;
+        uint256 deposit = base.balanceOf(address(this)) - baseCached_;
+        baseCached = baseCached_ + deposit;
+
+        minted = _totalSupply * deposit / baseCached_;
 
         _mint(to, minted);
     }
 
-    /// @dev Burn strategy tokens to withdraw lp tokens. The lp tokens obtained won't be of the same pool that the investor deposited,
-    /// if the strategy has swapped to another pool.
+    /// @dev Burn strategy tokens to withdraw base tokens. It can be called when not invested and not ejected.
+    /// @param to Recipient for the base tokens
+    /// @return baseObtained Amount of base tokens obtained
     /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burn(address to)
+    function burnDivested(address to)
         external
-        poolSelected
-        returns (uint256 withdrawal)
+        isState(State.DIVESTED)
+        returns (uint256 baseObtained)
     {
         // strategy * burnt/supply = withdrawal
-        uint256 cached_ = cached;
+        uint256 baseCached_ = baseCached;
         uint256 burnt = _balanceOf[address(this)];
-        withdrawal = cached_ * burnt / _totalSupply;
-        cached = cached_ - withdrawal;
+        baseObtained = baseCached_ * burnt / _totalSupply;
+        baseCached = baseCached_ - baseObtained;
 
         _burn(address(this), burnt);
-        IERC20(address(pool)).safeTransfer(to, withdrawal);
-    }
-
-    /// @dev Burn strategy tokens to withdraw base tokens. It can be called only when a pool is not selected.
-    /// @notice The strategy tokens that the user burns need to have been transferred previously, using a batchable router.
-    function burnForBase(address to)
-        external
-        poolNotSelected
-        returns (uint256 withdrawal)
-    {
-        // strategy * burnt/supply = withdrawal
-        uint256 burnt = _balanceOf[address(this)];
-        withdrawal = base.balanceOf(address(this)) * burnt / _totalSupply;
-
-        _burn(address(this), burnt);
-        base.safeTransfer(to, withdrawal);
+        base.safeTransfer(to, baseObtained);
     }
 }
