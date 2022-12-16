@@ -11,28 +11,19 @@ import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
+import { TestExtensions } from "./utils/TestExtensions.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
 
-interface DonorStrategy {
-    function seriesId() external view returns (bytes6);
-    function pool() external view returns (IPool);
-}
 
-abstract contract DeployedState is Test, TestConstants {
+abstract contract DeployedState is Test, TestConstants, TestExtensions {
     using stdStorage for StdStorage;
 
-    // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
-    // YSDAI6MJD: 0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295
-    // YSUSDC6MMS: 0xFBc322415CBC532b54749E31979a803009516b5D
-    // YSUSDC6MJD: 0x8e8D6aB093905C400D583EfD37fbeEB1ee1c0c39
-    // YSETH6MMS: 0xcf30A5A994f9aCe5832e30C138C9697cda5E1247
-    // YSETH6MJD: 0x831dF23f7278575BA0b136296a285600cD75d076
-    // YSFRAX6MMS: 0x1565F539E96c4d440c38979dbc86Fd711C995DD6
-    // YSFRAX6MJD: 0x47cC34188A2869dAA1cE821C8758AA8442715831
-
-    // Pin to block 15741300 on 2022 September to March roll, so that the March pool exists and is initialized, but has no fyToken
-    // Roll tx: https://etherscan.io/tx/0x26eb4d44a310d953db5bcf2fdd47350fadac8be60d0f7c00313a0f83c4ff8d6b
-    // Pool: 0xbdc7bdae87dfe602e91fdd019c4c0334c38f6a46
+    // We use a custom tenderly fork with pools that are not initialized, but fyToken that have been added to the cauldron
+    // Pools:
+    //  0x303030390000 0xe2Cf890a20c022a034b2d89e6C573B68eD6feb70
+    //  0x303130390000 0x304765A87fD5f28A87f2078A88a42a575b973FF0
+    //  0x303230390000 0x8B4be6CD156CbD51Df8Fe603aD46DD3cd06A98d4
+    //  0x313830390000 0x16123dDcb3fBcA9b962D51d4B7001148e8Ac3036
 
     address deployer = address(bytes20(keccak256("deployer")));
     address alice = address(bytes20(keccak256("alice")));
@@ -42,7 +33,6 @@ abstract contract DeployedState is Test, TestConstants {
     address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
     ICauldron cauldron = ICauldron(0xc88191F8cb8e6D4a668B047c1C8503432c3Ca867);
     ILadle ladle = ILadle(0x6cB18fF2A33e981D1e38A663Ca056c0a5265066A);
-    DonorStrategy donorStrategy = DonorStrategy(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
 
     bytes6 seriesId;
     IPool pool;
@@ -51,53 +41,11 @@ abstract contract DeployedState is Test, TestConstants {
     IERC20Metadata sharesToken;
     Strategy strategy;
 
-    mapping(string => uint256) tracked;
-
-    function cash(IERC20 token, address user, uint256 amount) public {
-        uint256 start = token.balanceOf(user);
-        deal(address(token), user, start + amount);
-    }
-
-    function track(string memory id, uint256 amount) public {
-        tracked[id] = amount;
-    }
-
-    function assertTrackPlusEq(string memory id, uint256 plus, uint256 amount) public {
-        assertEq(tracked[id] + plus, amount);
-    }
-
-    function assertTrackMinusEq(string memory id, uint256 minus, uint256 amount) public {
-        assertEq(tracked[id] - minus, amount);
-    }
-
-    function assertTrackPlusApproxEqAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
-        assertApproxEqAbs(tracked[id] + plus, amount, delta);
-    }
-
-    function assertTrackMinusApproxEqAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
-        assertApproxEqAbs(tracked[id] - minus, amount, delta);
-    }
-
-    function assertApproxGeAbs(uint256 a, uint256 b, uint256 delta) public {
-        assertGe(a, b);
-        assertApproxEqAbs(a, b, delta);
-    }
-
-    function assertTrackPlusApproxGeAbs(string memory id, uint256 plus, uint256 amount, uint256 delta) public {
-        assertGe(tracked[id] + plus, amount);
-        assertApproxEqAbs(tracked[id] + plus, amount, delta);
-    }
-
-    function assertTrackMinusApproxGeAbs(string memory id, uint256 minus, uint256 amount, uint256 delta) public {
-        assertGe(tracked[id] - minus, amount);
-        assertApproxEqAbs(tracked[id] - minus, amount, delta);
-    }
-
     function setUp() public virtual {
-        vm.createSelectFork(MAINNET, 15741300);
+        vm.createSelectFork(UNIT_TESTS);
 
-        seriesId = donorStrategy.seriesId();
-        pool = donorStrategy.pool();
+        seriesId = 0x313830390000;
+        pool = IPool(0x16123dDcb3fBcA9b962D51d4B7001148e8Ac3036);
         fyToken = IFYToken(address(pool.fyToken()));
         baseToken = pool.baseToken();
         sharesToken = pool.sharesToken();
@@ -106,8 +54,8 @@ abstract contract DeployedState is Test, TestConstants {
         strategy = new Strategy("StrategyTest.t.sol", "test", fyToken);
 
         // The strategy needs to be given permission to initalize the pool
-        // vm.prank(timelock);
-        // AccessControl(address(pool)).grantRole(IPool.init.selector, address(strategy));
+        vm.prank(timelock);
+        AccessControl(address(pool)).grantRole(IPool.init.selector, address(strategy));
 
         // Alice has privileged roles
         strategy.grantRole(Strategy.init.selector, alice);
@@ -139,7 +87,7 @@ contract DeployedStateTest is DeployedState {
         strategy.init(bob);
 
         // Test the strategy can add the dstStrategy as the next pool
-        assertEq(strategy.cached(), initAmount);
+        assertEq(strategy.baseCached(), initAmount);
         assertEq(strategy.totalSupply(), strategy.balanceOf(bob));
         assertTrackPlusEq("bobStrategyTokens", initAmount, strategy.balanceOf(bob));
         assertEq(uint256(strategy.state()), 1);
@@ -162,10 +110,10 @@ contract DeployedStateTest is DeployedState {
     }
 
     function testBurnPoolTokensNotForYou() public {
-        console2.log("strategy._burnPoolTokens()");
+        console2.log("strategy.burnPoolTokens()");
 
         vm.expectRevert(bytes("Unauthorized"));
-        strategy._burnPoolTokens(pool, 0);
+        strategy.burnPoolTokens(pool, 0);
     }
 }
 
@@ -192,18 +140,18 @@ contract DivestedStateTest is DivestedState {
 
     function testMintDivested() public {
         console2.log("strategy.mint()");
-        uint256 baseIn = strategy.cached() / 1000;
-        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.cached();
+        uint256 baseIn = strategy.baseCached() / 1000;
+        uint256 expectedMinted = (baseIn * strategy.totalSupply()) / strategy.baseCached();
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         cash(baseToken, address(strategy), baseIn);
         uint256 minted = strategy.mintDivested(bob);
 
         assertEq(minted, expectedMinted);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", baseIn, strategy.cached());
+        assertTrackPlusEq("baseCached", baseIn, strategy.baseCached());
     }
 
     function testBurnDivested() public {
@@ -239,16 +187,6 @@ contract DivestedStateTest is DivestedState {
         else pool = IPool(0xBdc7Bdae87dfE602E91FDD019c4C0334C38f6A46); // DAI
 
         vm.expectRevert(bytes("Mismatched base"));
-        vm.prank(alice);
-        strategy.invest(pool);
-    }
-    
-    function testNoFYTokenInvest() public {
-        console2.log("strategy.invest()");
-
-        pool = IPool(0x52956Fb3DC3361fd24713981917f2B6ef493DCcC); // DAI only
-
-        vm.expectRevert(bytes("Only with no fyToken in the pool"));
         vm.prank(alice);
         strategy.invest(pool);
     }
@@ -290,26 +228,26 @@ abstract contract InvestedState is DivestedState {
 }
 
 contract InvestedStateTest is InvestedState {
-    function testmint() public {
+    function testMint() public {
         console2.log("strategy.mint()");
         uint256 poolIn = pool.totalSupply() / 1000;
         assertGt(poolIn, 0);
 
         track("bobStrategyTokens", strategy.balanceOf(bob));
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("strategyPoolBalance", pool.balanceOf(address(strategy)));
-        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.cached();
+        uint256 expected = (poolIn * strategy.totalSupply()) / strategy.poolCached();
 
         cash(pool, address(strategy), poolIn);
         uint256 minted = strategy.mint(bob);
 
         assertEq(minted, expected);
         assertTrackPlusEq("bobStrategyTokens", minted, strategy.balanceOf(bob));
-        assertTrackPlusEq("cached", poolIn, strategy.cached());
+        assertTrackPlusEq("poolCached", poolIn, strategy.poolCached());
         assertTrackPlusEq("strategyPoolBalance", poolIn, pool.balanceOf(address(strategy)));
     }
 
-    function testburn() public {
+    function testBurn() public {
         console2.log("strategy.burn()");
         uint256 burnAmount = strategy.balanceOf(hole) / 2;
         assertGt(burnAmount, 0);
@@ -318,16 +256,16 @@ contract InvestedStateTest is InvestedState {
         vm.prank(hole);
         strategy.transfer(address(strategy), burnAmount);
 
-        track("cached", strategy.cached());
+        track("poolCached", strategy.poolCached());
         track("bobPoolTokens", pool.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
-        uint256 poolExpected = (burnAmount * strategy.cached()) / strategy.totalSupply();
+        uint256 poolExpected = (burnAmount * strategy.poolCached()) / strategy.totalSupply();
 
         uint256 poolObtained = strategy.burn(bob);
 
         assertEq(poolObtained, poolExpected);
         assertTrackPlusEq("bobPoolTokens", poolObtained, pool.balanceOf(bob));
-        assertTrackMinusEq("cached", poolObtained, strategy.cached());
+        assertTrackMinusEq("poolCached", poolObtained, strategy.poolCached());
     }
 
     function testEjectAuth() public {
@@ -348,7 +286,7 @@ contract InvestedStateTest is InvestedState {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
         assertEq(fyToken.balanceOf(address(strategy)), 0);
         assertEq(strategy.fyTokenCached(), 0);
 
@@ -382,7 +320,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
     function testEjectTiltedToDrained() public {
         console2.log("strategy.eject()");
 
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
         track("bobBaseTokens", baseToken.balanceOf(bob));
         track("strategySupply", strategy.totalSupply());
 
@@ -397,7 +335,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
         (uint256 baseObtained, uint256 fyTokenObtained) = strategy.eject();
 
         assertEq(pool.balanceOf(alice), poolExpected);
-        assertEq(strategy.cached(), 0);
+        assertEq(strategy.baseCached(), 0);
         assertEq(strategy.fyTokenCached(), 0);
         assertEq(uint256(strategy.state()), 4);
     }
@@ -413,7 +351,7 @@ contract InvestedTiltedStateTest is InvestedTiltedState {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
         assertEq(fyToken.balanceOf(address(strategy)), expectedFYToken);
         assertEq(strategy.fyTokenCached(), fyToken.balanceOf(address(strategy)));
 
@@ -443,9 +381,9 @@ contract TestEjected is EjectedState {
         uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
         track("aliceFYTokens", fyToken.balanceOf(alice));
         track("strategyFYToken", fyTokenAvailable);
-        assertEq(baseToken.balanceOf(address(strategy)), strategy.cached());
+        assertEq(baseToken.balanceOf(address(strategy)), strategy.baseCached());
         track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
-        track("cached", strategy.cached());
+        track("baseCached", strategy.baseCached());
 
         // initial buy - half of ejected fyToken balance
         uint initialBuy = fyTokenAvailable / 2;
@@ -456,7 +394,7 @@ contract TestEjected is EjectedState {
         assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
         assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("cached", initialBuy, strategy.cached());
+        assertTrackPlusEq("baseCached", initialBuy, strategy.baseCached());
 
         // second buy - transfer in double the remaining fyToken and expect refund of base
         track("bobBaseTokens", baseToken.balanceOf(address(bob)));
@@ -473,7 +411,7 @@ contract TestEjected is EjectedState {
         assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
         assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
         assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
-        assertTrackPlusEq("cached", fyTokenAvailable, strategy.cached());
+        // assertTrackPlusEq("baseCached", fyTokenAvailable, strategy.baseCached());
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -498,6 +436,16 @@ abstract contract DrainedState is InvestedTiltedState {
 }
 
 contract TestDrained is DrainedState {
+
+    function testNoRestartWithoutBase() public {
+        console2.log("strategy.restart()");
+
+        vm.expectRevert("No base to restart");
+        vm.prank(alice);
+        strategy.restart();
+
+    }
+    
     function testRestart() public {
         console2.log("strategy.restart()");
         uint256 restartAmount = 10 ** baseToken.decimals();
@@ -508,7 +456,7 @@ contract TestDrained is DrainedState {
         strategy.restart();
 
         // Test we are now divested
-        assertEq(strategy.cached(), restartAmount);
+        assertEq(strategy.baseCached(), restartAmount);
         assertEq(uint256(strategy.state()), 1);
     } // --> Divested
 }
@@ -530,7 +478,7 @@ contract TestInvestedAfterMaturity is InvestedAfterMaturity {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -561,7 +509,7 @@ contract InvestedTiltedAfterMaturityTest is InvestedTiltedAfterMaturity {
 
         assertEq(pool.balanceOf(address(strategy)), 0);
         assertApproxEqAbs(baseToken.balanceOf(address(strategy)), expectedBase + expectedFYToken, 100);
-        assertEq(strategy.cached(), baseToken.balanceOf(address(strategy)));
+        assertEq(strategy.baseCached(), baseToken.balanceOf(address(strategy)));
     } // --> Ejected
 }
 
