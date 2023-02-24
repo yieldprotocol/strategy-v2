@@ -3,12 +3,12 @@ pragma solidity >=0.8.13;
 
 import {IStrategy} from "./../interfaces/IStrategy.sol";
 import {StrategyMigrator} from "./../StrategyMigrator.sol";
-import {AccessControl} from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import {SafeERC20Namer} from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import {MinimalTransferHelper} from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import {ERC20Rewards} from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import {CastU256I128} from "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
+import {AccessControl} from "@yield-protocol/utils-v2/src/access/AccessControl.sol";
+import {SafeERC20Namer} from "@yield-protocol/utils-v2/src/token/SafeERC20Namer.sol";
+import {MinimalTransferHelper} from "@yield-protocol/utils-v2/src/token/MinimalTransferHelper.sol";
+import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
+import {ERC20Rewards} from "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
+import {Cast} from "@yield-protocol/utils-v2/src/utils/Cast.sol";
 import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
 import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
@@ -47,7 +47,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
     using MinimalTransferHelper for IERC20;
     using MinimalTransferHelper for IFYToken;
     using MinimalTransferHelper for IPool;
-    using CastU256I128 for uint256;
+    using Cast for uint256;
 
     event LadleSet(ILadle ladle);
     event TokenJoinReset(address join);

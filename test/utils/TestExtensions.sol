@@ -2,7 +2,7 @@
 pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
-import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 
 contract TestExtensions is Test {
 

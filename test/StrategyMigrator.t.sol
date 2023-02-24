@@ -7,7 +7,7 @@ import "../contracts/interfaces/IStrategy.sol";
 import "../contracts/deprecated/IStrategyV1.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
 
 abstract contract ZeroState is Test, TestConstants {

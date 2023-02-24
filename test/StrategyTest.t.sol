@@ -8,8 +8,8 @@ import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron
 import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import {IERC20} from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import {IERC20Metadata} from "@yield-protocol/utils-v2/contracts/token/IERC20Metadata.sol";
+import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
+import {IERC20Metadata} from "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
 import { TestExtensions } from "./utils/TestExtensions.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";

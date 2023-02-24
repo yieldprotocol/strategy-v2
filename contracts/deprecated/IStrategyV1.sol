@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.6.0;
 
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
+import "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-// import "@yield-protocol/utils-v2/contracts/token/IERC20Rewards.sol";
-// import "@yield-protocol/utils-v2/contracts/auth/IAccessControl.sol";
+// import "@yield-protocol/utils-v2/src/token/IERC20Rewards.sol";
+// import "@yield-protocol/utils-v2/src/auth/IAccessControl.sol";
 
 
 interface IStrategyV1 is IERC20 {
