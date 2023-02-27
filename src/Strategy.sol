@@ -5,12 +5,12 @@ pragma solidity >=0.8.13;
 
 import { IStrategy } from "./interfaces/IStrategy.sol";
 import { StrategyMigrator } from "./StrategyMigrator.sol";
-import { AccessControl } from "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import { SafeERC20Namer } from "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import { MinimalTransferHelper } from "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import { ERC20Rewards } from "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import { IFYToken } from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import { AccessControl } from "@yield-protocol/utils-v2/src/access/AccessControl.sol";
+import { SafeERC20Namer } from "@yield-protocol/utils-v2/src/token/SafeERC20Namer.sol";
+import { MinimalTransferHelper } from "@yield-protocol/utils-v2/src/token/MinimalTransferHelper.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/src/token/IERC20.sol";
+import { ERC20Rewards } from "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
+import { IFYToken } from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace

@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 
-import "@yield-protocol/utils-v2/contracts/access/AccessControl.sol";
-import "@yield-protocol/utils-v2/contracts/token/SafeERC20Namer.sol";
-import "@yield-protocol/utils-v2/contracts/token/MinimalTransferHelper.sol";
-import "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import "@yield-protocol/utils-v2/contracts/token/ERC20Rewards.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU256I128.sol";
-import "@yield-protocol/utils-v2/contracts/cast/CastU128I128.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import "@yield-protocol/utils-v2/src/access/AccessControl.sol";
+import "@yield-protocol/utils-v2/src/token/SafeERC20Namer.sol";
+import "@yield-protocol/utils-v2/src/token/MinimalTransferHelper.sol";
+import "@yield-protocol/utils-v2/src/token/IERC20.sol";
+import "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
+import "@yield-protocol/utils-v2/src/utils/Cast.sol";
+import "@yield-protocol/vault-v2/src/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/src/interfaces/ICauldron.sol";
+import "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "./YieldMathExtensions.sol";
 
@@ -29,9 +28,7 @@ contract StrategyV1 is AccessControl, ERC20Rewards {
     using DivUp for uint256;
     using MinimalTransferHelper for IERC20;
     using YieldMathExtensions for IPool;
-    using CastU256U128 for uint256; // Inherited from ERC20Rewards
-    using CastU256I128 for uint256;
-    using CastU128I128 for uint128;
+    using Cast for *;
 
     event YieldSet(ILadle ladle, ICauldron cauldron);
     event TokenJoinReset(address join);

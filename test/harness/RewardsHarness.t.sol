@@ -4,9 +4,9 @@ pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 
-import { IERC20 } from "@yield-protocol/utils-v2/contracts/token/IERC20.sol";
-import { ERC20Mock } from "lib/yield-utils-v2/contracts/mocks/ERC20Mock.sol";
-import { IStrategy } from "../../contracts/interfaces/IStrategy.sol";
+import { IERC20 } from "@yield-protocol/utils-v2/src/token/IERC20.sol";
+import { ERC20Mock } from "@yield-protocol/vault-v2/src/mocks/ERC20Mock.sol";
+import { IStrategy } from "../../src/interfaces/IStrategy.sol";
 import { TestExtensions } from "./../utils/TestExtensions.sol";
 import { TestConstants } from "./../utils/TestConstants.sol";
 

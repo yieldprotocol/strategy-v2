@@ -3,8 +3,8 @@ pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import { Strategy, AccessControl } from "../../contracts/Strategy.sol";
-import { ILadle } from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import { Strategy, AccessControl } from "../../src/Strategy.sol";
+import { ILadle } from "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
 import { TestConstants } from "./../utils/TestConstants.sol";
 import { TestExtensions } from "./../utils/TestExtensions.sol";
 
