@@ -1,13 +1,13 @@
 {
   "name": "@yield-protocol/strategy-v2",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "YieldSpace v2 Liquidity Providing Strategy",
   "author": "Yield Inc.",
   "files": [
-    "contracts/*.sol",
-    "contracts/**/*.sol",
-    "!contracts/deprecated/*.sol",
-    "!contracts/draft/*.sol"
+    "src/*.sol",
+    "src/**/*.sol",
+    "!src/deprecated/*.sol",
+    "!src/draft/*.sol"
   ],
   "scripts": {
     "forge:build": "forge build",
