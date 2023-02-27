@@ -2,11 +2,11 @@
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import "../contracts/Strategy.sol";
-import "../contracts/interfaces/IStrategy.sol";
-import "../contracts/deprecated/IStrategyV1.sol";
+import "../src/Strategy.sol";
+import "../src/interfaces/IStrategy.sol";
+import "../src/deprecated/IStrategyV1.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
 

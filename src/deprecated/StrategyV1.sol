@@ -7,9 +7,9 @@ import "@yield-protocol/utils-v2/src/token/MinimalTransferHelper.sol";
 import "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
 import "@yield-protocol/utils-v2/src/utils/Cast.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import "@yield-protocol/vault-v2/src/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/src/interfaces/ICauldron.sol";
+import "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "./YieldMathExtensions.sol";
 

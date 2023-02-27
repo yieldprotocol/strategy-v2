@@ -1,5 +1,5 @@
 [profile.default]
-src = 'contracts'
+src = 'src'
 out = 'artifacts'
 libs = ['lib']
 solc_version = '0.8.15'

@@ -3,16 +3,16 @@ pragma solidity >=0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import {Strategy, AccessControl} from "../../contracts/Strategy.sol";
-import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
-import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import {Strategy, AccessControl} from "../../src/Strategy.sol";
+import {ICauldron} from "@yield-protocol/vault-v2/src/interfaces/ICauldron.sol";
+import {ILadle} from "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
+import {IFYToken} from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./../utils/TestConstants.sol";
 import { TestExtensions } from "./../utils/TestExtensions.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/src/interfaces/DataTypes.sol";
 
 /// @dev This test harness tests that a deployed and invested strategy is functional.
 

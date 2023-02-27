@@ -9,9 +9,9 @@ import {MinimalTransferHelper} from "@yield-protocol/utils-v2/src/token/MinimalT
 import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import {ERC20Rewards} from "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
 import {Cast} from "@yield-protocol/utils-v2/src/utils/Cast.sol";
-import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
-import {ICauldron} from "@yield-protocol/vault-v2/contracts/interfaces/ICauldron.sol";
-import {ILadle} from "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import {IFYToken} from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
+import {ICauldron} from "@yield-protocol/vault-v2/src/interfaces/ICauldron.sol";
+import {ILadle} from "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
 import {IPool} from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 import "forge-std/console2.sol";

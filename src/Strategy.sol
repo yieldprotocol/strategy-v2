@@ -10,7 +10,7 @@ import { SafeERC20Namer } from "@yield-protocol/utils-v2/src/token/SafeERC20Name
 import { MinimalTransferHelper } from "@yield-protocol/utils-v2/src/token/MinimalTransferHelper.sol";
 import { IERC20 } from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import { ERC20Rewards } from "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
-import { IFYToken } from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import { IFYToken } from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace

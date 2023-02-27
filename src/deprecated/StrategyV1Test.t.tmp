@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
-import "../contracts/deprecated/StrategyV1.sol";
-import "../contracts/mocks/VaultMock.sol";
-import "../contracts/mocks/BaseMock.sol";
-import "../contracts/mocks/FYTokenMock.sol";
-import "../contracts/mocks/ERC20Mock.sol";
-import "../contracts/deprecated/YieldMathExtensions.sol";
+import "../src/deprecated/StrategyV1.sol";
+import "../src/mocks/VaultMock.sol";
+import "../src/mocks/BaseMock.sol";
+import "../src/mocks/FYTokenMock.sol";
+import "../src/mocks/ERC20Mock.sol";
+import "../src/deprecated/YieldMathExtensions.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/yieldspace-tv/src/Pool/Modules/PoolNonTv.sol";
 import "@yield-protocol/yieldspace-tv/src/Pool/PoolErrors.sol";
 import "@yield-protocol/yieldspace-tv/src/YieldMath.sol";
 import "@yield-protocol/yieldspace-tv/src/test/mocks/ERC4626TokenMock.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/DataTypes.sol";
-import "@yield-protocol/vault-v2/contracts/interfaces/ILadle.sol";
+import "@yield-protocol/vault-v2/src/interfaces/DataTypes.sol";
+import "@yield-protocol/vault-v2/src/interfaces/ILadle.sol";
 import "@yield-protocol/utils-v2/src/token/SafeERC20Namer.sol";
 import "@yield-protocol/utils-v2/src/access/AccessControl.sol";
 import "@yield-protocol/utils-v2/src/token/IERC20.sol";

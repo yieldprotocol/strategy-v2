@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {IStrategyMigrator} from "./interfaces/IStrategyMigrator.sol";
-import {IFYToken} from "@yield-protocol/vault-v2/contracts/interfaces/IFYToken.sol";
+import {IFYToken} from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import {ERC20Permit} from "@yield-protocol/utils-v2/src/token/ERC20Permit.sol";
 
