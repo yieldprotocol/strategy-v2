@@ -360,7 +360,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         uint256 burnt = _balanceOf[address(this)];
         _burn(address(this), burnt);
 
-        poolTokensObtained = pool.balanceOf(address(this)) * burnt / totalSupply_;
+        poolTokensObtained = poolCached_ * burnt / totalSupply_;
         pool_.safeTransfer(address(to), poolTokensObtained);
 
         // Update pool cache
