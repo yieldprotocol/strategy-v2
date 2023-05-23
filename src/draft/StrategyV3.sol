@@ -78,9 +78,7 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
     constructor(string memory name, string memory symbol, ILadle ladle_, IFYToken fyToken_)
         ERC20Rewards(name, symbol, SafeERC20Namer.tokenDecimals(address(fyToken_)))
-        StrategyMigrator(
-            IERC20(fyToken_.underlying()),
-            fyToken_)
+        StrategyMigrator(IERC20(fyToken_.underlying()))
     {
         ladle = ladle_;
         cauldron = ladle_.cauldron();
@@ -89,7 +87,6 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         // Deploy with any series matching the desired base in any other case
         fyToken = fyToken_;
 
-        base = IERC20(fyToken_.underlying());
         bytes6 baseId_;
         baseId = baseId_ = fyToken_.underlyingId();
         baseJoin = address(ladle_.joins(baseId_));

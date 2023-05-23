@@ -11,7 +11,7 @@ import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 abstract contract StrategyMigrator is IStrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
-    IERC20 public base;
+    IERC20 public immutable base;
 
     /// Mock pool fyToken - Can be any address
     IFYToken public fyToken;
@@ -19,9 +19,8 @@ abstract contract StrategyMigrator is IStrategyMigrator {
     /// Mock pool maturity - Can be set to a value far in the future to avoid `divest` calls
     uint32 public maturity;
 
-    constructor(IERC20 base_, IFYToken fyToken_) {
+    constructor(IERC20 base_) {
         base = base_;
-        fyToken = fyToken_;
     }
 
     /// @dev Mock pool init. Called within `invest`.
