@@ -30,7 +30,7 @@ interface IStrategy is IStrategyMigrator {
     /// @dev Mint the first strategy tokens, without investing
     function init(address to)
         external
-        returns (uint256 minted);
+        returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted);
 
     /// @dev Start the strategy investments in the next pool
     /// @notice When calling this function for the first pool, some underlying needs to be transferred to the strategy first, using a batchable router.

@@ -14,24 +14,12 @@ interface IStrategyMigrator is IERC20 {
     /// @dev Mock pool base - Must match that of the calling strategy
     function base() external view returns(IERC20);
 
-    /// @dev Mock pool fyToken - Must be set to a real fyToken registered to a series in the Cauldron, any will do
+    /// @dev Mock pool fyToken - Can be any address, including address(0)
     function fyToken() external view returns(IFYToken);
 
-    /// @dev Mock pool mint. Called within `startPool`. This contract must hold 1 wei of base.
-    function mint(address, address, uint256, uint256) external returns (uint256, uint256, uint256);
+    /// @dev Mock pool init. Called within `invest`.
+    function init(address) external returns (uint256, uint256, uint256);
 
     /// @dev Mock pool burn and make it revert so that `endPool`never suceeds, and `burnForBase` can never be called.
     function burn(address, address, uint256, uint256) external returns  (uint256, uint256, uint256);
-
-    /// @dev Mock pool maturity
-    function maturity() external view returns(uint32);
-
-    /// @dev Mock pool getBaseBalance
-    function getBaseBalance() external view returns(uint128);
-
-    /// @dev Mock pool getFYTokenBalance
-    function getFYTokenBalance() external view returns(uint128);
-
-    /// @dev Mock pool ts
-    function ts() external view returns(int128);
 }
