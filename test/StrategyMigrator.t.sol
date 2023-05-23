@@ -6,6 +6,7 @@ import "../src/Strategy.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
+import { ERC1967Proxy } from "openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 abstract contract ZeroState is Test, TestConstants {
 
@@ -44,7 +45,17 @@ abstract contract ZeroState is Test, TestConstants {
 
         baseToken = srcStrategy.base();
 
-        dstStrategy = new Strategy("", "", fyToken);
+        dstStrategy = new Strategy("", "", baseToken);
+
+        ERC1967Proxy dstStrategyProxy = new ERC1967Proxy(
+            address(dstStrategy),
+            abi.encodeWithSignature(
+                "initialize(address,address)",
+                address(this),
+                address(fyToken)
+            )
+        );
+        dstStrategy = Strategy(address(dstStrategyProxy));
 
         dstStrategy.grantRole(StrategyMigrator.init.selector, address(srcStrategy));
 

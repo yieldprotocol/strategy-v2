@@ -2,3 +2,4 @@ forge-std/=lib/forge-std/src/
 @yield-protocol/vault-v2=lib/vault-v2
 @yield-protocol/yieldspace-tv=lib/yieldspace-tv
 @yield-protocol/utils-v2=lib/yield-utils-v2
+openzeppelin/=lib/openzeppelin-contracts/

@@ -12,6 +12,7 @@ import { IERC20 } from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import { ERC20Rewards } from "@yield-protocol/utils-v2/src/token/ERC20Rewards.sol";
 import { IFYToken } from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
+import { UUPSUpgradeable } from "openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 /// @dev The Strategy contract allows liquidity providers to provide liquidity in yieldspace
 /// pool tokens and receive strategy tokens that represent a stake in a YieldSpace pool contract.
@@ -21,7 +22,7 @@ import { IPool } from "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 /// The strategy can also `eject` from a Pool before maturity. Any fyToken obtained will be available
 /// to be bought by anyone at face value. If the pool tokens can't be burned, they will be ejected
 /// and the strategy can be recapitalized.
-contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
+contract Strategy is UUPSUpgradeable, AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'd like to import IStrategy
     enum State {DEPLOYED, DIVESTED, INVESTED, EJECTED, DRAINED}
     using MinimalTransferHelper for IERC20;
     using MinimalTransferHelper for IFYToken;
@@ -34,6 +35,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     event SoldFYToken(uint256 soldFYToken, uint256 returnedBase);
 
     State public state;                          // The state determines which functions are available
+    bool public initialized;                     // Lock for the implementation and upgrade contracts
 
     // IERC20 public immutable base;             // Base token for this strategy (inherited from StrategyMigrator)
     // IFYToken public override fyToken;         // Current fyToken for this strategy (inherited from StrategyMigrator)
@@ -43,20 +45,27 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     uint256 public poolCached;                   // Pool tokens held by the strategy
     uint256 public fyTokenCached;                // In emergencies, the strategy can keep fyToken
 
-    constructor(string memory name_, string memory symbol_, IFYToken fyToken_)
-        ERC20Rewards(name_, symbol_, SafeERC20Namer.tokenDecimals(address(fyToken_)))
-        StrategyMigrator(
-            IERC20(fyToken_.underlying()),
-            fyToken_)
+    constructor(string memory name_, string memory symbol_, IERC20 base_)
+        StrategyMigrator(base_)
+        ERC20Rewards(name_, symbol_, SafeERC20Namer.tokenDecimals(address(base_)))
     {
-        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
-        // Deploy with any series matching the desired base in any other case
-        fyToken = fyToken_;
-
-        base = IERC20(fyToken_.underlying());
-
-        _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
+        initialized = true; // Lock the implementation contract
     }
+
+
+    /// @dev Give the ROOT role and create a LOCK role with itself as the admin role and no members. 
+    /// Calling setRoleAdmin(msg.sig, LOCK) means no one can grant that msg.sig role anymore.
+    function initialize (address root_, IFYToken fyToken_) public {
+        require(!initialized, "Already initialized");
+        require (base == IERC20(fyToken_.underlying()), "Base and fyToken mismatch");
+        fyToken = fyToken_;
+        initialized = true;             // On an uninitialized contract, no governance functions can be executed, because no one has permission to do so
+        _grantRole(ROOT, root_);      // Grant ROOT
+        _setRoleAdmin(LOCK, LOCK);      // Create the LOCK role by setting itself as its own admin, creating an independent role tree
+    }
+
+    /// @dev Allow to set a new implementation
+    function _authorizeUpgrade(address newImplementation) internal override auth {}
 
     modifier isState(State target) {
         require (

@@ -12,6 +12,7 @@ import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 import {IERC20Metadata} from "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
 import { TestExtensions } from "./utils/TestExtensions.sol";
+import { ERC1967Proxy } from "openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@yield-protocol/vault-v2/src/interfaces/DataTypes.sol";
 
 
@@ -51,7 +52,17 @@ abstract contract DeployedState is Test, TestConstants, TestExtensions {
         sharesToken = pool.sharesToken();
 
         // Strategy V2
-        strategy = new Strategy("StrategyTest.t.sol", "test", fyToken);
+        strategy = new Strategy("StrategyTest.t.sol", "test", baseToken);
+
+        ERC1967Proxy strategyProxy = new ERC1967Proxy(
+            address(strategy),
+            abi.encodeWithSignature(
+                "initialize(address,address)",
+                address(this),
+                address(fyToken)
+            )
+        );
+        strategy = Strategy(address(strategyProxy));
 
         // The strategy needs to be given permission to initalize the pool
         vm.prank(timelock);
@@ -75,7 +86,40 @@ abstract contract DeployedState is Test, TestConstants, TestExtensions {
     }
 }
 
+
 contract DeployedStateTest is DeployedState {
+
+    // Test that the storage is initialized
+    function testStorageInitialized() public {
+        assertTrue(strategy.initialized());
+    }
+
+    // Test that the storage can't be initialized again
+    function testInitializeRevertsIfInitialized() public {
+        strategy.grantRole(Strategy.initialize.selector, address(this));
+        
+        vm.expectRevert("Already initialized");
+        strategy.initialize(address(this), IFYToken(address(0)));
+    }
+
+    // Test that only authorized addresses can upgrade
+    function testUpgradeToRevertsIfNotAuthed() public {
+        vm.expectRevert("Access denied");
+        strategy.upgradeTo(address(0));
+    }
+
+    // Test that the upgrade works
+    function testUpgradeTo() public {
+        Strategy strategyV2 = new Strategy("StrategyTest.t.sol", "test", IERC20(address(0)));
+
+        strategy.grantRole(0x3659cfe6, address(this)); // upgradeTo(address)
+        strategy.upgradeTo(address(strategyV2));
+
+        assertEq(address(strategy.base()), address(0));
+        assertTrue(strategy.hasRole(strategy.ROOT(), address(this)));
+        assertTrue(strategy.initialized());
+    }
+
     function testInit() public {
         console2.log("strategy.init()");
         uint256 initAmount = 10 ** baseToken.decimals();
