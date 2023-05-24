@@ -31,7 +31,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
     event Divested(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained);
     event Ejected(address indexed pool, uint256 lpTokenDivested, uint256 baseObtained, uint256 fyTokenObtained);
     event Drained(address indexed pool, uint256 lpTokenDivested);
-    event SoldFYToken(uint256 soldFYToken, uint256 returnedBase);
+    event RetrievedFYToken(uint256 retrievedFYToken, uint256 acceptedBase);
 
     State public state;                          // The state determines which functions are available
 
@@ -244,42 +244,35 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         require(fyToken.balanceOf(address(this)) - fyTokenBalance == fyTokenReceived, "Burn failed - fyToken");
     }
 
-    /// @notice Buy ejected fyToken in the strategy at face value
-    /// @param fyTokenTo Address to send the purchased fyToken to.
-    /// @param baseTo Address to send any remaining base to.
-    /// @return soldFYToken Amount of fyToken sold.
-    /// @return returnedBase Amount of base unused and returned.
-    function buyFYToken(address fyTokenTo, address baseTo)
+    /// @notice Retrieve ejected fyToken in the strategy, and accept base donations.
+    /// @param to Address to send the purchased fyToken to.
+    /// @return retrievedFYToken Amount of fyToken retrieved.
+    /// @return acceptedBase Amount of base accepted.
+    function retrieveFYToken(address to)
         external
+        auth
         isState(State.EJECTED)
-        returns (uint256 soldFYToken, uint256 returnedBase)
+        returns (uint256 retrievedFYToken, uint256 acceptedBase)
     {
         // Caching
         IFYToken fyToken_ = fyToken;
         uint256 baseCached_ = baseCached;
-        uint256 fyTokenCached_ = fyTokenCached;
+        uint256 fyTokenCached_ = retrievedFYToken = fyTokenCached;
 
-        uint256 baseIn = base.balanceOf(address(this)) - baseCached_;
-        (soldFYToken, returnedBase) = baseIn > fyTokenCached_ ? (fyTokenCached_, baseIn - fyTokenCached_) : (baseIn, 0);
+        acceptedBase = base.balanceOf(address(this)) - baseCached_;
 
         // Update base and fyToken cache
-        baseCached = baseCached_ + soldFYToken; // soldFYToken is base not returned
-        fyTokenCached = fyTokenCached_ -= soldFYToken;
+        baseCached = baseCached_ + acceptedBase; // soldFYToken is base not returned
+        delete fyTokenCached;
 
-        // Transition to divested if done
-        if (fyTokenCached_ == 0) {
-            // Transition to Divested
-            _transition(State.DIVESTED);
-            emit Divested(address(0), 0, 0);
-        }
+        // Transition to Divested
+        _transition(State.DIVESTED);
+        emit Divested(address(0), 0, 0);
 
         // Transfer fyToken and base (if surplus)
-        fyToken_.safeTransfer(fyTokenTo, soldFYToken);
-        if (soldFYToken < baseIn) {
-            base.safeTransfer(baseTo, baseIn - soldFYToken);
-        }
+        fyToken_.safeTransfer(to, fyTokenCached_);
 
-        emit SoldFYToken(soldFYToken, returnedBase);
+        emit RetrievedFYToken(retrievedFYToken, acceptedBase);
     }
 
     /// @notice If we drained the strategy, we can recapitalize it with base to avoid a forced migration
