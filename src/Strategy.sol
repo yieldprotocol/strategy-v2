@@ -48,15 +48,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         StrategyMigrator(
             IERC20(fyToken_.underlying()),
             fyToken_)
-    {
-        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
-        // Deploy with any series matching the desired base in any other case
-        fyToken = fyToken_;
-
-        base = IERC20(fyToken_.underlying());
-
-        _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
-    }
+    {}
 
     modifier isState(State target) {
         require (

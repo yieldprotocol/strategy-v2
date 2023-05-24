@@ -11,7 +11,7 @@ import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
 abstract contract StrategyMigrator is IStrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
-    IERC20 public base;
+    IERC20 public immutable base;
 
     /// Mock pool fyToken - Can be any address
     IFYToken public fyToken;
