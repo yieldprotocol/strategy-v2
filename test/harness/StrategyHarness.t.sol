@@ -212,10 +212,10 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
 
         // retrieve all fyToken and donate an amount of base
         uint baseDonated = fyTokenAvailable / 2;
-        cash(baseToken, address(strategy), initialBuy);
-        (uint256 bought,) = strategy.retrieveFYToken(alice);
+        cash(baseToken, address(strategy), baseDonated);
+        (uint256 retrievedFYToken, uint256 baseAccepted) = strategy.retrieveFYToken(alice);
 
-        assertEq(bought, initialBuy);
+        assertEq(retrievedFYToken, fyTokenAvailable);
         assertTrackPlusEq("aliceFYTokens", fyTokenAvailable, fyToken.balanceOf(alice));
         assertEq(fyToken.balanceOf(address(strategy)), 0);
         assertTrackPlusEq("strategyBaseTokens", baseDonated, baseToken.balanceOf(address(strategy)));
