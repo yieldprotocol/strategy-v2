@@ -4,23 +4,19 @@ pragma solidity ^0.8.13;
 import {IStrategyMigrator} from "./interfaces/IStrategyMigrator.sol";
 import {IFYToken} from "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
 import {IERC20} from "@yield-protocol/utils-v2/src/token/IERC20.sol";
-import {ERC20Permit} from "@yield-protocol/utils-v2/src/token/ERC20Permit.sol";
 
 
-/// @dev The Migrator contract poses as a Pool to receive all assets from a Strategy
-/// during a roll operation.
-/// @notice The Pool and fyToken must exist. The fyToken needs to be not mature, and the pool needs to have no fyToken in it.
-/// There will be no state changes on pool or fyToken.
-/// TODO: For this to work, the implementing class must inherit from ERC20 and make sure that totalSupply is not zero after the `mint` call.
+/// @dev The Migrator contract poses as a Pool to receive all assets from a Strategy during an invest call.
+/// TODO: For this to work, the implementing class must inherit from ERC20.
 abstract contract StrategyMigrator is IStrategyMigrator {
 
     /// Mock pool base - Must match that of the calling strategy
-    IERC20 public base;
+    IERC20 public immutable base;
 
-    /// Mock pool fyToken - Must be set to a real fyToken registered to a series in the Cauldron, any will do
+    /// Mock pool fyToken - Can be any address
     IFYToken public fyToken;
 
-    /// Mock pool maturity - Its contents don't matter
+    /// Mock pool maturity - Can be set to a value far in the future to avoid `divest` calls
     uint32 public maturity;
 
     constructor(IERC20 base_, IFYToken fyToken_) {
@@ -28,8 +24,8 @@ abstract contract StrategyMigrator is IStrategyMigrator {
         fyToken = fyToken_;
     }
 
-    /// @dev Mock pool mint. Called within `startPool`. This contract must hold 1 wei of base.
-    function mint(address, address, uint256, uint256)
+    /// @dev Mock pool init. Called within `invest`.
+    function init(address)
         external
         virtual
         returns (uint256, uint256, uint256)
@@ -37,26 +33,12 @@ abstract contract StrategyMigrator is IStrategyMigrator {
         return (0, 0, 0);
     }
 
-    /// @dev Mock pool burn and make it revert so that `endPool`never suceeds, and `burnForBase` can never be called.
+    /// @dev Mock pool burn that reverts so that `divest` never suceeds, but `eject` does.
     function burn(address, address, uint256, uint256)
         external
-        returns  (uint256, uint256, uint256)
+        virtual
+        returns (uint256, uint256, uint256)
     {
         revert();
-    }
-
-    /// @dev Mock pool getBaseBalance
-    function getBaseBalance() external view returns(uint128) {
-        return 0;
-    }
-
-    /// @dev Mock pool getFYTokenBalance
-    function getFYTokenBalance() external view returns(uint128) {
-        return 0;
-    }
-
-    /// @dev Mock pool ts
-    function ts() external view returns(int128) {
-        return 0;
     }
 }

@@ -201,7 +201,7 @@ abstract contract EjectedOrDrainedState is InvestedState {
 
 contract TestEjectedOrDrained is EjectedOrDrainedState {
     function testHarnessBuyFYTokenEjected() public skipOnCI onlyEjected {
-        console2.log("strategy.buyFYToken()");
+        console2.log("strategy.retrieveFYToken()");
 
         uint256 fyTokenAvailable = fyToken.balanceOf(address(strategy));
         track("aliceFYTokens", fyToken.balanceOf(alice));
@@ -210,33 +210,16 @@ contract TestEjectedOrDrained is EjectedOrDrainedState {
         track("strategyBaseTokens", baseToken.balanceOf(address(strategy)));
         track("baseCached", strategy.baseCached());
 
-        // initial buy - half of ejected fyToken balance
-        uint initialBuy = fyTokenAvailable / 2;
-        cash(baseToken, address(strategy), initialBuy);
-        (uint256 bought,) = strategy.buyFYToken(alice, bob);
+        // retrieve all fyToken and donate an amount of base
+        uint baseDonated = fyTokenAvailable / 2;
+        cash(baseToken, address(strategy), baseDonated);
+        (uint256 retrievedFYToken, uint256 baseAccepted) = strategy.retrieveFYToken(alice);
 
-        assertEq(bought, initialBuy);
-        assertTrackPlusEq("aliceFYTokens", initialBuy, fyToken.balanceOf(alice));
-        assertTrackMinusEq("strategyFYToken", initialBuy, fyToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("strategyBaseTokens", initialBuy, baseToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("baseCached", initialBuy, strategy.baseCached());
-
-        // second buy - transfer in double the remaining fyToken and expect refund of base
-        track("bobBaseTokens", baseToken.balanceOf(address(bob)));
-        uint remainingFYToken = fyToken.balanceOf(address(strategy));
-        uint secondBuy = remainingFYToken * 2;
-        uint returned;
-        cash(baseToken, address(strategy), secondBuy);
-        (bought, returned) = strategy.buyFYToken(alice, bob);
-
-        assertEq(bought, remainingFYToken);
-        assertEq(returned, remainingFYToken);
-        assertEq(initialBuy + remainingFYToken, fyTokenAvailable);
+        assertEq(retrievedFYToken, fyTokenAvailable);
         assertTrackPlusEq("aliceFYTokens", fyTokenAvailable, fyToken.balanceOf(alice));
-        assertTrackMinusEq("strategyFYToken", fyTokenAvailable, fyToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("strategyBaseTokens", fyTokenAvailable, baseToken.balanceOf(address(strategy)));
-        assertTrackPlusEq("bobBaseTokens", secondBuy - remainingFYToken, baseToken.balanceOf(address(bob)));
-        assertTrackPlusEq("baseCached", fyTokenAvailable, strategy.baseCached());
+        assertEq(fyToken.balanceOf(address(strategy)), 0);
+        assertTrackPlusEq("strategyBaseTokens", baseDonated, baseToken.balanceOf(address(strategy)));
+        assertTrackPlusEq("baseCached", baseDonated, strategy.baseCached());
 
         // State variables are reset
         assertEq(address(strategy.fyToken()), address(0));
@@ -354,7 +337,7 @@ contract DivestedStateTest is DivestedState {
 //   eject -> Drained ✓
 //   time passes -> InvestedAfterMaturity  ✓
 // Ejected
-//   buyFYToken -> Divested ✓
+//   retrieveFYToken -> Divested ✓
 // Drained
 //   restart -> Divested ✓
 // InvestedAfterMaturity

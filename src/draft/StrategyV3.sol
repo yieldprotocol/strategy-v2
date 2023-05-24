@@ -85,11 +85,6 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         ladle = ladle_;
         cauldron = ladle_.cauldron();
 
-        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
-        // Deploy with any series matching the desired base in any other case
-        fyToken = fyToken_;
-
-        base = IERC20(fyToken_.underlying());
         bytes6 baseId_;
         baseId = baseId_ = fyToken_.underlyingId();
         baseJoin = address(ladle_.joins(baseId_));
@@ -160,25 +155,14 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
 
     // ----------------------- STATE CHANGES --------------------------- //
 
-    /// @dev Mock pool mint hooked up to initialize the strategy and return strategy tokens.
-    function mint(address, address, uint256, uint256)
+    /// @dev Mint the first strategy tokens, without investing.
+    /// @param to Receiver of the strategy tokens.
+    function init(address to)
         external
         override
         isState(State.DEPLOYED)
         auth
         returns (uint256 baseIn, uint256 fyTokenIn, uint256 minted)
-    {
-        baseIn = minted = this.init(msg.sender);
-        fyTokenIn = 0;
-    }
-
-    /// @dev Mint the first strategy tokens, without investing.
-    /// @param to Receiver of the strategy tokens.
-    function init(address to)
-        external
-        isState(State.DEPLOYED)
-        auth
-        returns (uint256 minted)
     {
         // Clear state variables from a potential migration
         delete seriesId;
@@ -188,7 +172,8 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         delete vaultId;
 
         require (_totalSupply == 0, "Already initialized");
-        value = minted = base.balanceOf(address(this));
+        fyTokenIn = 0;
+        value = baseIn = minted = base.balanceOf(address(this));
         require (minted > 0, "Not enough base in");
         // Make sure that at the end of the transaction the strategy has enough tokens as to not expose itself to a rounding-down liquidity attack.
         _mint(to, minted);
