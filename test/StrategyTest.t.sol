@@ -62,6 +62,7 @@ abstract contract DeployedState is Test, TestConstants, TestExtensions {
         strategy.grantRole(Strategy.invest.selector, alice);
         strategy.grantRole(Strategy.eject.selector, alice);
         strategy.grantRole(Strategy.restart.selector, alice);
+        strategy.grantRole(Strategy.call.selector, alice);
 
         vm.label(deployer, "deployer");
         vm.label(alice, "alice");
@@ -114,6 +115,25 @@ contract DeployedStateTest is DeployedState {
 
         vm.expectRevert(bytes("Unauthorized"));
         strategy.burnPoolTokens(pool, 0);
+    }
+
+    function testNoAuthCall() public {
+        console2.log("strategy.invest()");
+
+        vm.expectRevert(bytes("Access denied"));
+        vm.prank(bob);
+        strategy.call(address(baseToken), abi.encodeWithSelector(IERC20.transfer.selector, bob, 0));
+    }
+
+    function testCall() public {
+        console2.log("strategy.call()");
+
+        cash(baseToken, address(strategy), 1);
+        vm.prank(alice);
+        strategy.call(address(baseToken), abi.encodeWithSelector(IERC20.transfer.selector, alice, 1));
+
+        assertEq(baseToken.balanceOf(alice), 1);
+        assertEq(baseToken.balanceOf(address(strategy)), 0);
     }
 }
 
