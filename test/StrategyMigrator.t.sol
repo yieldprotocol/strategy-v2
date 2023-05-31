@@ -3,133 +3,83 @@ pragma solidity >=0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "../src/Strategy.sol";
-import "../src/interfaces/IStrategy.sol";
-import "../src/deprecated/IStrategyV1.sol";
 import "@yield-protocol/yieldspace-tv/src/interfaces/IPool.sol";
 import "@yield-protocol/vault-v2/src/interfaces/IFYToken.sol";
-import "@yield-protocol/utils-v2/src/token/IERC20Metadata.sol";
 import { TestConstants } from "./utils/TestConstants.sol";
 
 abstract contract ZeroState is Test, TestConstants {
-    using stdStorage for StdStorage;
 
-    // YSDAI6MMS: 0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD
-    // YSDAI6MJD: 0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295
-    // YSUSDC6MMS: 0xFBc322415CBC532b54749E31979a803009516b5D
-    // YSUSDC6MJD: 0x8e8D6aB093905C400D583EfD37fbeEB1ee1c0c39
-    // YSETH6MMS: 0xcf30A5A994f9aCe5832e30C138C9697cda5E1247
-    // YSETH6MJD: 0x831dF23f7278575BA0b136296a285600cD75d076
-    // YSFRAX6MMS: 0x1565F539E96c4d440c38979dbc86Fd711C995DD6
-    // YSFRAX6MJD: 0x47cC34188A2869dAA1cE821C8758AA8442715831
+    // Strategies
+    // 0x1030FF000000 0xad1983745D6c739537fEaB5bed45795f47A940b3
+    // 0x1030FF000001 0x5582b8398FB586F1b79edd1a6e83f1c5aa558955
+    // 0x1031FF000000 0x4276BEaA49DE905eED06FCDc0aD438a19D3861DD
+    // 0x1031FF000001 0x5aeB4EFaAA0d27bd606D618BD74Fe883062eAfd0
+    // 0x1032FF000000 0x33e6B154efC7021dD55464c4e11a6AfE1f3D0635
+    // 0x1032FF000001 0x3b4FFD93CE5fCf97e61AA8275Ec241C76cC01a47
+    // 0x10A0FF000000 0x861509A3fA7d87FaA0154AAE2CB6C1f92639339A
+    // 0x10A0FF000001 0xfe2Aba5ba890AF0ee8B6F2d488B1f85C9E7C5643
 
-    // TODO: Pin to block 15741300 on 2022 September to March roll, so that the March pool exists, is initialized and has no fyToken.
-    // Roll tx: https://etherscan.io/tx/0x26eb4d44a310d953db5bcf2fdd47350fadac8be60d0f7c00313a0f83c4ff8d6b
-    // Pool: 0xbdc7bdae87dfe602e91fdd019c4c0334c38f6a46
-    // fyTokenReserves: 223191199910816266762851
-    // totalSupply:     223191199910816266762851
+    // FYToken
+    // 0x0030FF00028B 0x523803c57a497c3AD0E850766c8276D4864edEA5
+    // 0x0031FF00028B 0x60a6A7fabe11ff36cbE917a17666848f0FF3A60a
+    // 0x0032FF00028B 0xCbB7Eba13F9E1d97B2138F588f5CA2F5167F06cc
+    // 0x00A0FF000288 0xC24DA474A71C44d2b644089020ba255908AdA6e1
+    // 0x00A0FF00028B 0x035072cb2912DAaB7B578F468Bd6F0d32a269E32
+    // 0x0030FF00028E 0xd947360575E6F01Ce7A210C12F2EE37F5ab12d11
+    // 0x0031FF00028E 0xEE508c827a8990c04798B242fa801C5351012B23
+    // 0x0032FF00028E 0x5Bb78E530D9365aeF75664c5093e40B0001F7CCd
+    // 0x00A0FF00028E 0x9B19889794A30056A1E5Be118ee0a6647B184c5f
 
-    address timelock = 0x3b870db67a45611CF4723d44487EAF398fAc51E3;
+    address timelock = 0xd0a22827Aed2eF5198EbEc0093EA33A4CD641b6c;
     // We will warp to the December to June roll, and migrate the MJD strategy to a contract impersonating the March series.
-    IStrategyV1 srcStrategy = IStrategyV1(0x1144e14E9B0AA9e181342c7e6E0a9BaDB4ceD295);
-    address srcStrategyHolder = 0x9185Df15078547055604F5c0B02fc1C8D93594A5;
-    IStrategyV1 donorStrategy = IStrategyV1(0x7ACFe277dEd15CabA6a8Da2972b1eb93fe1e2cCD); // We use this strategy as the source for the pool and fyToken addresses.
-    IPool srcPool;
-    IFYToken srcFYToken;
-    bytes6 srcSeriesId;
-    IPool dstPool;
-    IFYToken dstFYToken;
-    bytes6 dstSeriesId;
-
-    IERC20Metadata sharesToken;
-    IERC20Metadata baseToken;
-    IFYToken fyToken;
+    Strategy srcStrategy = Strategy(0xad1983745D6c739537fEaB5bed45795f47A940b3);
+    IFYToken fyToken = IFYToken(0x523803c57a497c3AD0E850766c8276D4864edEA5); // Needs to match the base of the srcStrategy and dstStrategy
     Strategy dstStrategy;
+    IERC20 baseToken;
+
+    address srcStrategyHolder = 0x3353E1E2976DBbc191a739871faA8E6E9D2622c7;
 
     function setUp() public virtual {
-        vm.createSelectFork(MAINNET, 15741300);
+        vm.createSelectFork("MIGRATE_TESTS"); // Will only work on https://rpc.tenderly.co/fork/b9c353b6-37ae-4f9c-8649-5d23df9f862f
 
-        srcSeriesId = srcStrategy.seriesId();
-        srcPool = srcStrategy.pool();
-        srcFYToken = IFYToken(address(srcPool.fyToken()));
-        
-        dstSeriesId = donorStrategy.seriesId();
-        dstPool = donorStrategy.pool();
-        dstFYToken = IFYToken(address(dstPool.fyToken()));
+        baseToken = srcStrategy.base();
 
-        baseToken = srcPool.baseToken();
-        sharesToken = srcPool.sharesToken();
+        dstStrategy = new Strategy("", "", fyToken);
 
-        dstStrategy = new Strategy("", "", dstFYToken);
-
-        dstStrategy.grantRole(StrategyMigrator.mint.selector, address(srcStrategy));
+        dstStrategy.grantRole(StrategyMigrator.init.selector, address(srcStrategy));
 
         vm.label(address(srcStrategy), "srcStrategy");
-        vm.label(address(srcPool), "srcPool");
-        vm.label(address(sharesToken), "sharesToken");
+        vm.label(address(dstStrategy), "dstStrategy");
         vm.label(address(baseToken), "baseToken");
         vm.label(address(fyToken), "fyToken");
-        vm.label(address(dstStrategy), "dstStrategy");
-
-        // Warp to maturity of srcFYToken
-        vm.warp(uint32(srcFYToken.maturity()) + 1);
-
-        // srcStrategy divests
-        srcStrategy.endPool();
-
-        // Init dstStrategy
-        stdstore
-            .target(address(baseToken))
-            .sig(baseToken.balanceOf.selector)
-            .with_key(address(dstStrategy))
-            .checked_write(1);
     }
 }
 
 contract ZeroStateTest is ZeroState {
-    function testSetNextPool() public {
-        console2.log("srcStrategy.setNextPool(IPool(address(dstStrategy)), dstSeriesId)");
-        vm.prank(timelock);
-        srcStrategy.setNextPool(IPool(address(dstStrategy)), dstSeriesId);
-
-        // Test the strategy can add the dstStrategy as the next pool
-        assertEq(address(srcStrategy.nextPool()), address(dstStrategy));
-        assertEq(srcStrategy.nextSeriesId(), dstSeriesId);
-    }
-}
-
-abstract contract SetNextPoolState is ZeroState {
-    function setUp() public override virtual {
-        super.setUp();
-        vm.prank(timelock);
-        srcStrategy.setNextPool(IPool(address(dstStrategy)), dstSeriesId);
-    }
-}
-
-contract SetNextPoolStateTest is SetNextPoolState {
-    function testStartPool() public {
-        console2.log("srcStrategy.startPool(,,,)");
+    function testInvestToMigrate() public {
+        console2.log("srcStrategy.invest()");
         uint256 migratedBase = baseToken.balanceOf(address(srcStrategy));
 
         vm.prank(timelock);
-        srcStrategy.startPool(0,0);
+        srcStrategy.invest(IPool(address(dstStrategy)));
 
         // srcStrategy has no base
         assertEq(baseToken.balanceOf(address(srcStrategy)), 0);
         // dstStrategy has the base
-        assertEq(baseToken.balanceOf(address(dstStrategy)), migratedBase + 1); // TODO: This might be because of Euler
+        assertEq(baseToken.balanceOf(address(dstStrategy)), migratedBase);
     }
 }
 
-abstract contract MigratedState is SetNextPoolState {
+abstract contract MigratedState is ZeroState {
     function setUp() public override virtual {
         super.setUp();
         vm.prank(timelock);
-        srcStrategy.startPool(0,0);
+        srcStrategy.invest(IPool(address(dstStrategy)));
     }
 }
 
 contract MigratedStateTest is MigratedState {
-    function testBurn() public {
+    function testBurnAfterMigrate() public {
         console2.log("srcStrategy.burn()");
         uint256 srcStrategySupply = srcStrategy.totalSupply();
         uint256 dstStrategySupply = dstStrategy.totalSupply();
@@ -147,7 +97,7 @@ contract MigratedStateTest is MigratedState {
         assertEq(dstStrategy.balanceOf(address(srcStrategyHolder)), expectedDstStrategyBalance);
     }
 
-    function testMint() public {
+    function testMintAfterMigrate() public {
         console2.log("srcStrategy.mint()");
         uint256 srcStrategyHolderBalance = srcStrategy.balanceOf(srcStrategyHolder);
         assertGe(srcStrategyHolderBalance, 0);
@@ -165,6 +115,6 @@ contract MigratedStateTest is MigratedState {
         // srcStrategyHolder has no dstStrategy tokens
         assertEq(dstStrategy.balanceOf(address(srcStrategyHolder)), 0);
         // srcStrategyHolder has the same srcStrategy tokens he had before
-        assertEq(srcStrategy.balanceOf(address(srcStrategyHolder)), srcStrategyHolderBalance - 1); // TODO: Do the conversions rounding down to get to this value
+        assertEq(srcStrategy.balanceOf(address(srcStrategyHolder)), srcStrategyHolderBalance - 4); // TODO: Do the conversions rounding down to get to this value
     }
 }
