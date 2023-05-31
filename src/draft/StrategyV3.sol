@@ -85,11 +85,6 @@ contract StrategyV3 is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: 
         ladle = ladle_;
         cauldron = ladle_.cauldron();
 
-        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
-        // Deploy with any series matching the desired base in any other case
-        fyToken = fyToken_;
-
-        base = IERC20(fyToken_.underlying());
         bytes6 baseId_;
         baseId = baseId_ = fyToken_.underlyingId();
         baseJoin = address(ladle_.joins(baseId_));

@@ -48,15 +48,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         StrategyMigrator(
             IERC20(fyToken_.underlying()),
             fyToken_)
-    {
-        // Deploy with a seriesId_ matching the migrating strategy if using the migration feature
-        // Deploy with any series matching the desired base in any other case
-        fyToken = fyToken_;
-
-        base = IERC20(fyToken_.underlying());
-
-        _grantRole(Strategy.init.selector, address(this)); // Enable the `mint` -> `init` hook.
-    }
+    {}
 
     modifier isState(State target) {
         require (
@@ -193,7 +185,7 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         emit Divested(address(pool_), toDivest, baseObtained = baseFromBurn + baseFromRedeem);
     }
 
-    // ----------------------- EJECT --------------------------- //
+    // ----------------------- EMERGENCY --------------------------- //
 
     /// @notice Divest out of a pool at any time. If possible the pool tokens will be burnt for base and fyToken, the latter of which
     /// must be sold to return the strategy to a functional state. If the pool token burn reverts, the pool tokens will be transferred
@@ -301,6 +293,13 @@ contract Strategy is AccessControl, ERC20Rewards, StrategyMigrator { // TODO: I'
         require((baseCached = baseIn = base.balanceOf(address(this))) > 0, "No base to restart");
         _transition(State.DIVESTED);
         emit Divested(address(0), 0, 0);
+    }
+
+    /// @notice If everything else goes wrong, use this to take corrective action
+    function call(address target, bytes calldata data) external auth returns (bytes memory) {
+        (bool success, bytes memory returndata) = target.call(data);
+        require(success, "Call failed");
+        return returndata;
     }
 
     // ----------------------- MINT & BURN --------------------------- //
